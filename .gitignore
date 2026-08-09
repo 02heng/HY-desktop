@@ -1,0 +1,75 @@
+# 依赖
+node_modules/
+
+# 构建产物
+target/
+dist/
+build/
+
+# 大文件压缩包
+*.zip
+
+# 日志
+build-log*.txt
+*.log
+dev-error.log
+
+# 敏感配置
+.env
+.env.local
+.env.*.local
+
+# 系统文件
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+
+# ffmpeg.exe(超过 GitHub 100MB 限制,用户自行下载放到 src-tauri/resources/ffmpeg/)
+toolknit-desktop/src-tauri/resources/ffmpeg/ffmpeg.exe
+
+# AI/ML 模型文件(体积过大,用户自行下载)
+models/
+
+# Windsurf AI 工作流文档(可能包含部署凭据,勿提交)
+.windsurf/workflows/
+
+# 开发/部署文档和配置(非开源项目核心代码)
+devto-article.md
+manifest.json
+toolknit-desktop-changelog.md
+强制更新功能文档.md
+新电脑初始化指南.md
+
+# 第三方参考项目
+开发文件/
+
+# 安装器项目(不开源)
+toolknit-installer/
+
+# 打包后的安装程序(体积大,通过 GitHub Releases 分发)
+ToolKnit-Desktop-Setup.exe
+
+# ToolKnit Desktop 本地构建/运行输出
+toolknit-desktop/dist/
+toolknit-desktop/output/
+toolknit-desktop/tmp/
+toolknit-desktop/src-tauri/target/
+
+# FFmpeg 体积大，桌面端设置页按需下载，GitHub Release/npm 均不内置
+toolknit-desktop/src-tauri/resources/ffmpeg/
+
+# @toolknit/cli prepack 阶段自动暂存的资源，不提交到仓库
+toolknit-desktop/cli/vendor/
+toolknit-desktop/cli/lib/core/
+toolknit-desktop/cli/resources/fonts/
+toolknit-desktop/cli/*.tgz
+
+# README 资源误命名副本
+toolknit-desktop/docs/assets/readme-hero.gif.gif
+
+# GitHub 只识别根目录 .github；子应用目录里的副本不提交
+toolknit-desktop/.github/

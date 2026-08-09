@@ -1,0 +1,83 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "HY",
+  "version": "1.4.0",
+  "identifier": "com.hy.desktop",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "HY",
+        "width": 1210,
+        "height": 780,
+        "minWidth": 1210,
+        "minHeight": 780,
+        "resizable": false,
+        "fullscreen": false,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false,
+        "devtools": false,
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection",
+        "dragDropEnabled": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' asset: blob: data: http://127.0.0.1:*; media-src 'self' asset: blob: data: http://127.0.0.1:*; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https: http://localhost:* http://127.0.0.1:*; font-src 'self' data:",
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["**"]
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "nsis"],
+    "icon": [
+      "icons/icon.ico"
+    ],
+    "resources": [
+      "resources/qpdf/qpdf.exe",
+      "resources/qpdf/qpdf30.dll",
+      "resources/qpdf/concrt140.dll",
+      "resources/qpdf/msvcp140.dll",
+      "resources/qpdf/msvcp140_1.dll",
+      "resources/qpdf/msvcp140_2.dll",
+      "resources/qpdf/msvcp140_atomic_wait.dll",
+      "resources/qpdf/msvcp140_codecvt_ids.dll",
+      "resources/qpdf/vcruntime140.dll",
+      "resources/qpdf/vcruntime140_1.dll",
+      "resources/qpdf/NOTICE.txt",
+      "resources/qpdf/LICENSE.html",
+      "resources/whisper/Release/whisper-cli.exe",
+      "resources/whisper/Release/whisper.dll",
+      "resources/whisper/Release/ggml.dll",
+      "resources/whisper/Release/ggml-base.dll",
+      "resources/whisper/Release/ggml-cpu-alderlake.dll",
+      "resources/whisper/Release/ggml-cpu-cannonlake.dll",
+      "resources/whisper/Release/ggml-cpu-cascadelake.dll",
+      "resources/whisper/Release/ggml-cpu-haswell.dll",
+      "resources/whisper/Release/ggml-cpu-icelake.dll",
+      "resources/whisper/Release/ggml-cpu-sandybridge.dll",
+      "resources/whisper/Release/ggml-cpu-skylakex.dll",
+      "resources/whisper/Release/ggml-cpu-sse42.dll",
+      "resources/whisper/Release/ggml-cpu-x64.dll"
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "both",
+        "installerIcon": "icons/icon.ico",
+        "languages": ["English", "SimpChinese"],
+        "displayLanguageSelector": true,
+        "template": "./windows/installer.nsi",
+        "installerHooks": "./windows/hooks.nsh"
+      }
+    }
+  }
+}

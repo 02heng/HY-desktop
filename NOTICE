@@ -1,0 +1,18 @@
+﻿HY Desktop
+Copyright 2026 HY contributors
+
+This project is a derivative work based on ToolKnit Desktop
+(https://github.com/ZihangDong/toolknit-desktop), which is licensed
+under the Apache License 2.0.
+
+The Apache License 2.0 applies to the source code in this repository
+for HY Desktop and its CLI/MCP components, including original
+ToolKnit Desktop code retained under that license and HY
+modifications/additions.
+
+This project does NOT claim any right to use the ToolKnit name, logos,
+visual identity, domains, official website, hosted web service, service
+accounts, or other brand identifiers. Those rights remain with their
+respective owners.
+
+HY is an independent product name used only for this fork.

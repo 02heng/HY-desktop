@@ -1,8 +1,8 @@
 export const AI_PROVIDER_LIMITS = Object.freeze({
-  maxResponseBytes: 2 * 1024 * 1024,
+  maxResponseBytes: 8 * 1024 * 1024,
   maxMessages: 12,
   maxMessageChars: 50000,
-  maxTokens: 16384
+  maxTokens: 300000
 });
 
 export class AiProviderError extends Error {
@@ -44,6 +44,16 @@ function contentLengthOf(response) {
   return Number.isFinite(value) && value >= 0 ? value : null;
 }
 
+function messageCompletionText(message) {
+  const content = typeof message?.content === 'string' ? message.content : '';
+  if (content.trim()) return content;
+  const reasoning = typeof message?.reasoning_content === 'string'
+    ? message.reasoning_content
+    : (typeof message?.reasoning === 'string' ? message.reasoning : '');
+  if (reasoning.includes('{') && reasoning.includes('}')) return reasoning;
+  return '';
+}
+
 function utf8ByteLength(value) {
   return new TextEncoder().encode(value).byteLength;
 }
@@ -81,6 +91,8 @@ export async function requestAiCompletion({
   model,
   messages,
   maxTokens,
+  thinking,
+  frequencyPenalty,
   signal,
   fetchImpl
 }) {
@@ -95,6 +107,17 @@ export async function requestAiCompletion({
   if (maxTokens !== undefined && (!Number.isInteger(maxTokens) || maxTokens < 1 || maxTokens > AI_PROVIDER_LIMITS.maxTokens)) {
     throw new AiProviderError('invalid_request');
   }
+  if (thinking !== undefined && thinking !== 'disabled' && thinking !== 'enabled') {
+    throw new AiProviderError('invalid_request');
+  }
+  if (frequencyPenalty !== undefined && !(
+    typeof frequencyPenalty === 'number'
+    && Number.isFinite(frequencyPenalty)
+    && frequencyPenalty >= -2
+    && frequencyPenalty <= 2
+  )) {
+    throw new AiProviderError('invalid_request');
+  }
   const requestFetch = fetchImpl ?? globalThis.fetch;
   if (typeof requestFetch !== 'function') {
     throw new AiProviderError('invalid_request');
@@ -107,6 +130,10 @@ export async function requestAiCompletion({
     stream: false
   };
   if (maxTokens !== undefined) body.max_tokens = maxTokens;
+  if (thinking === 'disabled' || thinking === 'enabled') {
+    body.thinking = { type: thinking };
+  }
+  if (frequencyPenalty !== undefined) body.frequency_penalty = frequencyPenalty;
 
   let response;
   try {
@@ -148,6 +175,9 @@ export async function requestAiCompletion({
   } catch {
     throw new AiProviderError('invalid_response');
   }
-  const content = data?.choices?.[0]?.message?.content;
-  return typeof content === 'string' ? content : '';
+  const content = messageCompletionText(data?.choices?.[0]?.message);
+  if (typeof content !== 'string' || !content.trim()) {
+    throw new AiProviderError('empty_content');
+  }
+  return content;
 }

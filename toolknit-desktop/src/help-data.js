@@ -19,7 +19,7 @@ export const HELP_CONTENT = {
         <div class="help-tool-card"><div class="help-tool-card-name">创意工具</div><div class="help-tool-card-desc">配色提取、打字测试</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">清理工具</div><div class="help-tool-card-desc">扫描大文件、AI 元数据建议、移入回收站</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">硬件工具</div><div class="help-tool-card-desc">只读查看整机、CPU、内存、显卡、主板、磁盘、网络和传感器</div></div>
-        <div class="help-tool-card"><div class="help-tool-card-name">AI 工具</div><div class="help-tool-card-desc">AI 润色、翻译、可编辑文档、可编辑表格</div></div>
+        <div class="help-tool-card"><div class="help-tool-card-name">AI 工具</div><div class="help-tool-card-desc">AI 润色、歌词创作、翻译、可编辑文档、可编辑表格</div></div>
       </div>
 
       <h3>核心特性</h3>
@@ -33,7 +33,7 @@ export const HELP_CONTENT = {
       </ul>
 
       <div class="help-note">
-        <p>本地工具不会上传文件。只有你主动使用 AI 润色、翻译、文档、表格或转写二次润色时，对应文字才会发送到你自己配置的 AI 服务。</p>
+        <p>本地工具不会上传文件。只有你主动使用 AI 润色、歌词创作、翻译、文档、表格或转写二次润色时，对应文字才会发送到你自己配置的 AI 服务。</p>
       </div>
     </div>`
   },
@@ -600,6 +600,25 @@ export const HELP_CONTENT = {
     </div>`
   },
 
+  'ai-lyrics': {
+    title: '歌词创作',
+    html: `<div class="help-doc">
+      <h2>歌词创作</h2>
+      <p>用 DeepSeek V4 Flash 按 MiniMax Music 格式生成歌名、风格提示词和带结构标签的歌词。结果可微调后复制到 MiniMax 官网，本工具不直接出歌。</p>
+      <h3>使用方法</h3>
+      <ol class="help-steps">
+        <li>选择类型：原创、故事主题曲、人物主题曲或场景主题曲</li>
+        <li>选择歌曲分类和大类下的子分类（流行、古风、说唱等会使用不同系统提示词）</li>
+        <li>选择歌词语言，填写提示词；可选上传 txt / md / docx 小说或文章</li>
+        <li>点击生成，在结果区修改歌名、风格和歌词</li>
+        <li>分别复制歌名、风格、歌词，或复制全部，粘贴到 MiniMax Music</li>
+        <li>确认后点击“保存到本地”，会在导出目录的 Lyrics 文件夹下按歌名新建作品文件夹（README.md、style.txt、lyrics.txt）</li>
+        <li>再次打开歌词创作时，可在「以往作品」里点开以前保存的歌</li>
+      </ol>
+      <div class="help-note"><p>歌词需带 [Intro]、[Verse]、[Chorus] 等标签。汉字按 2 字符计入 MiniMax 3500 上限。确认后可保存为本地作品文件夹，仍不上传、不生成音频。</p></div>
+    </div>`
+  },
+
   'ai-translate': {
     title: 'AI 智能翻译',
     html: `<div class="help-doc">
@@ -930,7 +949,7 @@ export const HELP_CONTENT = {
 
       <div class="help-faq-item">
         <div class="help-faq-q">Q：AI 工具会保存我的数据吗？</div>
-        <div class="help-faq-a">A：AI 工具（润色、翻译、对话等）会将文本内容发送到 AI 接口进行处理，但不会在本地保存您的输入内容。</div>
+        <div class="help-faq-a">A：AI 工具（润色、歌词创作、翻译、对话等）会将文本内容发送到 AI 接口进行处理，但不会在本地保存您的输入内容。</div>
       </div>
 
       <div class="help-faq-item">

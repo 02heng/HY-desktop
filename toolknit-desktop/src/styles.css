@@ -12110,6 +12110,37 @@
         color: #ffffff;
       }
 
+      .typing-test-custom-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+      .typing-test-upload-btn,
+      .typing-test-clear-btn {
+        padding: 8px 16px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.06);
+        color: rgba(255, 255, 255, 0.85);
+        font-size: 14px;
+        font-weight: 500;
+        font-family: inherit;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+      .typing-test-upload-btn:hover,
+      .typing-test-clear-btn:hover {
+        background: rgba(255, 255, 255, 0.12);
+        border-color: rgba(255, 255, 255, 0.25);
+      }
+      .typing-test-custom-meta {
+        font-size: 13px;
+        color: rgba(255, 255, 255, 0.55);
+        line-height: 1.4;
+        word-break: break-all;
+      }
+
       .typing-test-start-btn,
       .typing-test-reset-btn {
         padding: 12px 28px;
@@ -14424,3 +14455,424 @@
         .transcription-model-actions { justify-content: flex-start; }
         .transcription-source-row { align-items: flex-start; flex-direction: column; }
       }
+
+/* Region screenshot overlay (in-main, no second WebView) */
+/* Opaque root while the transparent window covers the desktop for region capture.
+   Hide every sibling (watermark tool, home UI, etc.) so they cannot ghost through. */
+body.is-region-screenshot {
+  background: #000 !important;
+}
+body.is-region-screenshot > *:not(.region-screenshot-overlay) {
+  visibility: hidden !important;
+}
+body.is-region-screenshot .region-screenshot-overlay {
+  visibility: visible !important;
+}
+.region-screenshot-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  background: #000;
+  cursor: crosshair;
+  user-select: none;
+}
+.region-screenshot-overlay[hidden] { display: none !important; }
+.region-screenshot-stage {
+  position: absolute;
+  inset: 0;
+  background-color: #111;
+  background-repeat: no-repeat;
+  background-position: 0 0;
+  background-size: 100% 100%;
+}
+.region-screenshot-mask {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+.region-screenshot-selection {
+  position: absolute;
+  border: 2px solid #4f8cff;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
+  display: none;
+  pointer-events: none;
+}
+.region-screenshot-size {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(15, 18, 28, 0.85);
+  color: #fff;
+  font-size: 12px;
+  display: none;
+  pointer-events: none;
+}
+.region-screenshot-hint {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(15, 18, 28, 0.82);
+  color: #e8eefc;
+  font-size: 13px;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 100000;
+}
+.region-screenshot-selection {
+  position: absolute;
+  border: 2px solid #4f8cff;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
+  display: none;
+  pointer-events: none;
+  overflow: hidden;
+}
+.region-screenshot-overlay.is-editing .region-screenshot-selection {
+  pointer-events: auto;
+}
+.region-screenshot-annotate {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: auto;
+  cursor: crosshair;
+}
+.region-screenshot-toolbar {
+  position: fixed;
+  z-index: 100001;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(22, 24, 32, 0.92);
+  border: 1px solid rgba(255,255,255,0.12);
+  box-shadow: 0 8px 28px rgba(0,0,0,0.35);
+}
+.region-screenshot-toolbar[hidden] { display: none !important; }
+.region-shot-tool,
+.region-shot-btn {
+  min-width: 34px;
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.08);
+  color: #f5f7ff;
+  cursor: pointer;
+  font-size: 14px;
+}
+.region-shot-tool.active,
+.region-shot-btn.primary {
+  background: #4f8cff;
+  color: #fff;
+}
+.region-shot-btn.danger { background: rgba(255, 77, 79, 0.85); }
+.region-shot-sep {
+  width: 1px;
+  height: 18px;
+  background: rgba(255,255,255,0.18);
+  margin: 0 2px;
+}
+.region-screenshot-hint {
+  z-index: 100000;
+}
+
+/* Shared image-tool preview stage: centered media + progress */
+.hy-image-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  place-content: center;
+  width: 100%;
+  max-width: 920px;
+  margin: 0 auto;
+  min-height: 180px;
+  max-height: 420px;
+  overflow: hidden;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.28);
+  padding: 16px;
+  box-sizing: border-box;
+  text-align: center;
+}
+.hy-image-stage--checker {
+  background-color: #1a1a1a;
+  background-image:
+    linear-gradient(45deg, #2a2a2a 25%, transparent 25%),
+    linear-gradient(-45deg, #2a2a2a 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #2a2a2a 75%),
+    linear-gradient(-45deg, transparent 75%, #2a2a2a 75%);
+  background-size: 20px 20px;
+  background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+}
+.hy-image-stage img,
+.hy-image-stage canvas {
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+  max-width: min(100%, 880px);
+  max-height: 360px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+.hy-image-stage canvas {
+  cursor: crosshair;
+}
+.hy-image-toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin: 0 auto 10px;
+  max-width: 920px;
+}
+.hy-image-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 14px;
+}
+.hy-image-progress {
+  display: none;
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto 12px;
+}
+.hy-image-progress.is-active {
+  display: block;
+}
+.hy-image-progress.is-idle .hy-image-progress-track {
+  display: none;
+}
+.hy-image-progress-track {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+.hy-image-progress-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #6ee7b7, #3b82f6);
+  transition: width 0.2s ease;
+}
+.hy-image-progress.is-indeterminate .hy-image-progress-fill {
+  width: 36%;
+  animation: hyImageProgressSlide 1.15s ease-in-out infinite;
+}
+.hy-image-progress-text {
+  margin-top: 8px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.78);
+  text-align: center;
+}
+.hy-image-progress.is-idle .hy-image-progress-text {
+  margin-top: 0;
+}
+@keyframes hyImageProgressSlide {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(320%); }
+}
+
+#watermarkRemoveEditor,
+#imageMattingPreviewWrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 960px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Keep image-tool file lists and preview blocks centered in the body */
+#imageConvertOverlay .audio-convert-body,
+#imageCompressOverlay .audio-convert-body,
+#iconGenOverlay .audio-convert-body,
+#imageToPdfOverlay .audio-convert-body,
+#imageTransformOverlay .audio-convert-body,
+#heicConvertOverlay .audio-convert-body,
+#imageMattingOverlay .audio-convert-body,
+#watermarkRemoveOverlay .audio-convert-body {
+  align-items: center;
+}
+#imageConvertOverlay .audio-convert-files,
+#imageCompressOverlay .audio-convert-files,
+#iconGenOverlay .audio-convert-files,
+#imageToPdfOverlay .audio-convert-files,
+#imageTransformOverlay .audio-convert-files,
+#heicConvertOverlay .audio-convert-files {
+  margin-left: auto;
+  margin-right: auto;
+}
+#imageConvertOverlay .audio-convert-cta,
+#imageCompressOverlay .audio-convert-cta,
+#iconGenOverlay .audio-convert-cta,
+#imageToPdfOverlay .audio-convert-cta,
+#imageTransformOverlay .audio-convert-cta,
+#heicConvertOverlay .audio-convert-cta,
+#imageMattingOverlay .audio-convert-cta,
+#watermarkRemoveOverlay .audio-convert-cta,
+#imageConvertOverlay .audio-convert-process-btn,
+#imageCompressOverlay .audio-convert-process-btn,
+#iconGenOverlay .audio-convert-process-btn,
+#imageToPdfOverlay .audio-convert-process-btn,
+#imageTransformOverlay .audio-convert-process-btn,
+#heicConvertOverlay .audio-convert-process-btn {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.ai-lyrics-overlay {
+  overflow: hidden;
+}
+.ai-lyrics-overlay .audio-convert-body {
+  align-items: stretch;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: scroll;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.ai-lyrics-overlay .audio-convert-hero,
+.ai-lyrics-overlay .ai-lyrics-form,
+.ai-lyrics-overlay .ai-lyrics-result,
+.ai-lyrics-overlay .ai-lyrics-library {
+  flex-shrink: 0;
+  width: 100%;
+  max-width: 760px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.ai-lyrics-library {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.ai-lyrics-library-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.ai-lyrics-library-empty {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.55);
+  line-height: 1.5;
+}
+.ai-lyrics-library-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ai-lyrics-library-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.28);
+  color: #fff;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+.ai-lyrics-library-item:hover,
+.ai-lyrics-library-item:focus-visible {
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.08);
+}
+.ai-lyrics-library-item-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+.ai-lyrics-library-item-name {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+}
+.ai-lyrics-form,
+.ai-lyrics-result {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+}
+.ai-lyrics-result[hidden] {
+  display: none !important;
+}
+.ai-lyrics-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: stretch;
+}
+.ai-lyrics-label {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.72);
+}
+.ai-lyrics-textarea,
+.ai-lyrics-input {
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.28);
+  color: #fff;
+  padding: 12px 14px;
+  font: inherit;
+  resize: vertical;
+}
+.ai-lyrics-textarea--lyrics {
+  min-height: 280px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.ai-lyrics-source-row,
+.ai-lyrics-result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.ai-lyrics-source-meta,
+.ai-lyrics-meter {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+}
+.ai-lyrics-meter.is-over {
+  color: #fca5a5;
+}
+#aiLyricsOverlay .audio-convert-cta {
+  align-self: center;
+}
+#aiLyricsOverlay .audio-convert-format-options {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+#aiLyricsOverlay .ai-lyrics-genre-options {
+  max-height: 9.5rem;
+  overflow-y: auto;
+  align-content: flex-start;
+}
+#aiLyricsOverlay .ai-lyrics-genre-options .audio-convert-format-option {
+  font-size: 0.82rem;
+}

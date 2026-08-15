@@ -11,10 +11,18 @@ export default defineConfig(async () => ({
       ignored: ["**/src-tauri/**", "**/cli/vendor/**", "**/cli/resources/**", "**/cli/*.tgz"],
     },
   },
+  optimizeDeps: {
+    // Keep imgly out of prebundle (heavy / wasm). Prebundle ORT so Tauri WebView
+    // does not fetch raw /node_modules/... ESM (that path fails with dynamic import).
+    exclude: ["@imgly/background-removal"],
+    include: ["onnxruntime-web", "onnxruntime-web/webgpu", "onnxruntime-web/wasm"],
+  },
+  assetsInclude: ["**/*.wasm"],
   build: {
     rollupOptions: {
       input: {
         main: "index.html",
+        screenshot: "screenshot.html",
       },
     },
   },

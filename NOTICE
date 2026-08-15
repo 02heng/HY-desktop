@@ -1,4 +1,4 @@
-﻿HY Desktop
+HY Desktop
 Copyright 2026 HY contributors
 
 This project is a derivative work based on ToolKnit Desktop
@@ -16,3 +16,24 @@ accounts, or other brand identifiers. Those rights remain with their
 respective owners.
 
 HY is an independent product name used only for this fork.
+
+---------------------------------------------------------------------------
+Additional third-party notice (AGPL)
+
+The optional "Image Matting" feature integrates
+@imgly/background-removal (https://github.com/imgly/background-removal-js),
+which is licensed under the GNU Affero General Public License v3.0 (AGPL-3.0).
+
+If you distribute HY Desktop binaries that include or depend on this
+component, you must comply with AGPL-3.0 obligations for that component
+and any combined work as required by the license. Review the upstream
+license before commercial redistribution.
+
+---------------------------------------------------------------------------
+Additional third-party notice (MI-GAN)
+
+The "Remove Watermark" feature uses the MI-GAN inpainting model
+(https://github.com/Picsart-AI-Research/MI-GAN) via ONNX Runtime Web,
+with pipeline weights from https://huggingface.co/andraniksargsyan/migan
+(migan_pipeline_v2.onnx). Inference approach adapted from
+https://github.com/lxfater/inpaint-web.

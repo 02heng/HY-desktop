@@ -1,9 +1,7 @@
 ﻿      import { LogicalSize, getCurrentWindow } from '@tauri-apps/api/window';
-      import { createIcons, icons } from 'lucide';
+      import { createIcons } from 'lucide';
+      import { appIcons as icons } from './lucide-icons.js';
       import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.mjs?url';
-      import { initDarkVeil } from './darkveil.js';
-      import { initLightRays } from './lightrays.js';
-      import { initPlasma } from './plasma.js';
       import { getLang, setLang, applyTranslations, onLangChange, t } from './i18n.js';
       import typingWordsData from './data/typing-words.json';
       import { HELP_CONTENT, getHelpContent } from './help-data.js';
@@ -20,7 +18,6 @@
         moveAiDocRegionInFlow,
         normalizeAiDocLayout
       } from './ai-doc-core.js';
-      import { buildAiDocPdf } from './ai-doc-pdf-core.js';
       import {
         AI_TABLE_LIMITS,
         AiTableDataError,
@@ -46,6 +43,7 @@
         normalizeAiPolishedText,
         normalizeAiPolishDirections
       } from './ai-polish-core.js';
+      import { initAiLyricsTool } from './ai-lyrics-ui.js';
       import {
         TEXT_FORMAT_LIMITS,
         TextFormatError,
@@ -55,7 +53,6 @@
         TEXT_STATS_LIMITS,
         calculateTextStats
       } from './text-stats-core.js';
-      import { initHYExtraTools } from './hy-extra-tools.js';
       import {
         assessPasswordStrength,
         generatePassword as generateSecurePassword
@@ -114,8 +111,6 @@
       import { frameTimeLabel, normalizeVideoFrameFormat, normalizeVideoFrameTimestamp, validateVideoFrameInput } from './video-frame-core.js';
       import { createDefaultVideoGifSelection, normalizeVideoGifRequest, validateVideoGifInput, videoGifTimeLabel } from './video-gif-core.js';
       import { calculateImageStitchLayout, normalizeImageStitchRequest } from './image-stitch-core.js';
-      import { initPdfToImageTool } from './pdf-to-image-ui.js';
-      import JSZip from 'jszip';
 
       // Disable context menu globally, but allow on tool items for favorites
       document.addEventListener('contextmenu', (e) => {
@@ -189,6 +184,10 @@
       applyWindowRadiusSetting();
 
       createIcons({ icons });
+      // Keep legacy call sites working without shipping the full Lucide pack on window.
+      window.lucide = {
+        createIcons: () => createIcons({ icons })
+      };
       applyTranslations();
 
       function enablePdfPageStageHorizontalWheel(stage) {
@@ -220,10 +219,11 @@
         hueShift: darkveilVariant === 'blue' ? 220 : 0,
         noiseIntensity: 0.03,
         scanlineIntensity: 0,
-        speed: 1.6,
+        speed: 1.0,
         scanlineFrequency: 5,
         warpAmount: 0,
-        resolutionScale: 1
+        // Lower render scale to cut WebGL GPU/RAM use on the home background.
+        resolutionScale: 0.55
       };
       let darkveilDispose = null;
 
@@ -234,20 +234,41 @@
         }
       }
 
+      let darkveilModulePromise = null;
+      function loadDarkVeil() {
+        if (!darkveilModulePromise) {
+          darkveilModulePromise = import('./darkveil.js').then((mod) => mod.initDarkVeil);
+        }
+        return darkveilModulePromise;
+      }
+
       function syncDefaultDynamicBackground() {
         const shouldRun = Boolean(darkveilBg && !document.hidden && !document.body.classList.contains('has-custom-background'));
         if (!shouldRun) {
           stopDefaultDynamicBackground();
           return;
         }
-        if (!darkveilDispose) {
+        if (darkveilDispose) return;
+        void loadDarkVeil().then((initDarkVeil) => {
+          const stillShouldRun = Boolean(
+            darkveilBg &&
+            !document.hidden &&
+            !document.body.classList.contains('has-custom-background') &&
+            !darkveilDispose
+          );
+          if (!stillShouldRun) return;
           darkveilDispose = initDarkVeil(darkveilBg, DARKVEIL_OPTIONS);
-        }
+        }).catch((error) => console.error('Failed to load home background:', error));
       }
       document.addEventListener('visibilitychange', syncDefaultDynamicBackground);
       window.addEventListener('pageshow', syncDefaultDynamicBackground);
       window.addEventListener('pagehide', stopDefaultDynamicBackground);
-      syncDefaultDynamicBackground();
+      // Defer WebGL boot so first paint / JS parse finish first (same visuals once loaded).
+      if (typeof requestIdleCallback === 'function') {
+        requestIdleCallback(() => syncDefaultDynamicBackground(), { timeout: 1200 });
+      } else {
+        setTimeout(syncDefaultDynamicBackground, 0);
+      }
 
       const STANDARD_TOOL_PLASMA_OPTIONS = {
         color: '#6B6B6B',
@@ -258,17 +279,27 @@
         mouseInteractive: false
       };
 
+      let plasmaModulePromise = null;
+      function loadPlasma() {
+        if (!plasmaModulePromise) {
+          plasmaModulePromise = import('./plasma.js').then((mod) => mod.initPlasma);
+        }
+        return plasmaModulePromise;
+      }
+
       function initStandardToolPlasma(containerEl) {
         if (!containerEl) return null;
         let disposed = false;
         let innerDispose = null;
         let rebuildRaf = 0;
+        let loadToken = 0;
 
         const stopInner = () => {
           if (rebuildRaf) {
             cancelAnimationFrame(rebuildRaf);
             rebuildRaf = 0;
           }
+          loadToken += 1;
           if (typeof innerDispose === 'function') {
             innerDispose();
             innerDispose = null;
@@ -278,7 +309,13 @@
         const startInner = () => {
           rebuildRaf = 0;
           if (disposed || innerDispose || document.hidden || !containerEl.isConnected) return;
-          innerDispose = initPlasma(containerEl, STANDARD_TOOL_PLASMA_OPTIONS);
+          const token = ++loadToken;
+          void loadPlasma().then((initPlasma) => {
+            if (token !== loadToken || disposed || innerDispose || document.hidden || !containerEl.isConnected) {
+              return;
+            }
+            innerDispose = initPlasma(containerEl, STANDARD_TOOL_PLASMA_OPTIONS);
+          }).catch((error) => console.error('Failed to load tool background:', error));
         };
 
         const scheduleStart = () => {
@@ -1313,8 +1350,13 @@
         const info = document.createElement('div');
         const name = document.createElement('div'); name.className = 'transcription-model-name'; name.textContent = 'FFmpeg';
         const meta = document.createElement('div'); meta.className = 'transcription-model-meta';
+        const sourceLabel = ffmpegRuntimeStatus?.source === 'external'
+          ? (getLang() === 'en' ? 'system' : '系统已有')
+          : (ffmpegRuntimeStatus?.source === 'managed'
+            ? (getLang() === 'en' ? 'managed' : '应用内')
+            : '');
         meta.textContent = ffmpegRuntimeStatus?.installed
-          ? `${formatRuntimeBytes(ffmpegRuntimeStatus.bytes)} - ${displayFilesystemPath(ffmpegRuntimeStatus.path)}`
+          ? `${formatRuntimeBytes(ffmpegRuntimeStatus.bytes)}${sourceLabel ? ` · ${sourceLabel}` : ''} - ${displayFilesystemPath(ffmpegRuntimeStatus.path)}`
           : (getLang() === 'en' ? 'Required for audio and video tools' : '音频、视频工具所需的本地运行时');
         info.append(name, meta);
         const actions = document.createElement('div'); actions.className = 'transcription-model-actions';
@@ -1325,13 +1367,18 @@
             ? (getLang() === 'en' ? 'Installing' : '正在安装')
             : `${Math.min(100, Math.round((ffmpegRuntimeProgress.downloaded_bytes || 0) / total * 100))}%`;
           actions.append(progress);
-        } else if (ffmpegRuntimeStatus?.installed) {
+        } else if (ffmpegRuntimeStatus?.installed && ffmpegRuntimeStatus?.source === 'managed') {
           const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'settings-btn'; remove.textContent = getLang() === 'en' ? 'Delete' : '删除';
           remove.addEventListener('click', async () => {
             try { const { invoke } = await import('@tauri-apps/api/core'); await invoke('delete_ffmpeg_runtime'); await refreshFfmpegRuntime(); }
             catch (error) { window.showToast?.(String(error?.message || error)); }
           });
           actions.append(remove);
+        } else if (ffmpegRuntimeStatus?.installed && ffmpegRuntimeStatus?.source === 'external') {
+          const badge = document.createElement('span');
+          badge.className = 'transcription-model-current';
+          badge.textContent = getLang() === 'en' ? 'Using local install' : '已检测到本地安装';
+          actions.append(badge);
         } else {
           const install = document.createElement('button'); install.type = 'button'; install.className = 'settings-btn'; install.textContent = getLang() === 'en' ? 'Download' : '下载';
           install.addEventListener('click', async () => {
@@ -1992,20 +2039,26 @@
         if (!feedbackOverlay) return;
         feedbackOverlay.classList.add('visible');
         if (lightraysBg && !lightraysInstance) {
-          lightraysInstance = initLightRays(lightraysBg, {
-            raysOrigin: 'top-center',
-            raysColor: '#ffffff',
-            raysSpeed: 0.6,
-            lightSpread: 0.6,
-            rayLength: 3,
-            followMouse: true,
-            mouseInfluence: 0.1,
-            noiseAmount: 0,
-            distortion: 0,
-            pulsating: false,
-            fadeDistance: 1,
-            saturation: 1
-          });
+          const target = lightraysBg;
+          void import('./lightrays.js').then(({ initLightRays }) => {
+            if (!feedbackOverlay?.classList.contains('visible') || lightraysInstance || !target.isConnected) {
+              return;
+            }
+            lightraysInstance = initLightRays(target, {
+              raysOrigin: 'top-center',
+              raysColor: '#ffffff',
+              raysSpeed: 0.6,
+              lightSpread: 0.6,
+              rayLength: 3,
+              followMouse: true,
+              mouseInfluence: 0.1,
+              noiseAmount: 0,
+              distortion: 0,
+              pulsating: false,
+              fadeDistance: 1,
+              saturation: 1
+            });
+          }).catch((error) => console.error('Failed to load feedback background:', error));
         }
       }
 
@@ -6221,6 +6274,7 @@
 
         try {
           const img = selectedIconGenImage;
+          const { default: JSZip } = await import('jszip');
           const zip = new JSZip();
           const folder = zip.folder('icons');
           const totalSteps = ALL_SIZES.length + 3; // PNG sizes + ICO + SVG + favicon.ico
@@ -9960,7 +10014,7 @@
       }
 
       // Navigation entry
-      document.querySelectorAll('.audio-list-item[data-tool="audio-extract"]').forEach(item => {
+      document.querySelectorAll('.audio-list-item[data-tool="audio-extract"]').forEach((item) => {
         item.addEventListener('click', () => { openToolWithFfmpegCheck(openAudioExtractOverlay); });
         item.addEventListener('keydown', (e) => {
           if (e.key === 'Enter' || e.key === ' ') {
@@ -11418,17 +11472,49 @@
         pdfSplitBack.addEventListener('click', closePdfSplitOverlayFull);
       }
 
-      // ===== PDF To Image =====
-      initPdfToImageTool({
-        isTauri,
-        t,
-        onLangChange,
-        pdfWorkerUrl,
-        getOutputDir,
-        displayFilesystemPath,
-        initStandardToolPlasma,
-        disposeStandardToolPlasma
-      });
+      // ===== PDF To Image (lazy: load module on first open) =====
+      {
+        const PDF_TO_IMAGE_TOOL_ID = 'pdf-to-image';
+        let pdfToImageReady = false;
+        let pdfToImageInitPromise = null;
+        const ensurePdfToImageTool = () => {
+          if (!pdfToImageInitPromise) {
+            pdfToImageInitPromise = import('./pdf-to-image-ui.js').then(({ initPdfToImageTool }) => {
+              initPdfToImageTool({
+                isTauri,
+                t,
+                onLangChange,
+                pdfWorkerUrl,
+                getOutputDir,
+                displayFilesystemPath,
+                initStandardToolPlasma,
+                disposeStandardToolPlasma
+              });
+              pdfToImageReady = true;
+            });
+          }
+          return pdfToImageInitPromise;
+        };
+        document.querySelectorAll(`.audio-list-item[data-tool="${PDF_TO_IMAGE_TOOL_ID}"]`).forEach((item) => {
+          const gate = async (event) => {
+            if (pdfToImageReady) return;
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            try {
+              await ensurePdfToImageTool();
+            } catch (error) {
+              console.error('Failed to load PDF to Image tool:', error);
+              window.showToast?.(String(error?.message || error));
+              return;
+            }
+            item.click();
+          };
+          item.addEventListener('click', gate, true);
+          item.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') gate(event);
+          }, true);
+        });
+      }
       // ===== PDF Rotate Overlay Open/Close =====
       const pdfRotateOverlay = document.getElementById('pdfRotateOverlay');
       const pdfRotatePlasmaBg = document.getElementById('pdfRotatePlasmaBg');
@@ -13726,22 +13812,27 @@
         return null;
       }
 
-      async function callDeepSeek(messages, signal, maxTokens) {
+      async function callDeepSeek(messages, signal, maxTokens, modelOverride, extras) {
         const apiKey = localStorage.getItem('ai_api_key') || localStorage.getItem('deepseek_api_key') || '';
         if (!apiKey) {
           throw new Error(t('home.aiPolish.noApiKey'));
         }
         const { url: apiUrl, model } = getAiPlatformConfig();
-        if (!apiUrl || !model) {
+        const resolvedModel = typeof modelOverride === 'string' && modelOverride.trim()
+          ? modelOverride.trim()
+          : model;
+        if (!apiUrl || !resolvedModel) {
           throw new Error(t('home.aiPolish.noApiKey'));
         }
         try {
           return await requestAiCompletion({
             url: apiUrl,
             apiKey,
-            model,
+            model: resolvedModel,
             messages,
             maxTokens,
+            thinking: extras?.thinking,
+            frequencyPenalty: extras?.frequencyPenalty,
             signal
           });
         } catch (error) {
@@ -13995,6 +14086,22 @@
             openToolWithAiCheck(openAiPolishOverlay);
           }
         });
+      });
+
+      initAiLyricsTool({
+        t,
+        toast: (message) => window.showToast?.(message),
+        callAi: callDeepSeek,
+        getPlatform: () => localStorage.getItem('ai_platform') || 'deepseek',
+        getModel: () => getAiPlatformConfig().model,
+        openToolWithAiCheck,
+        initPlasma: initStandardToolPlasma,
+        disposePlasma: disposeStandardToolPlasma,
+        isTauri,
+        getOutputDir,
+        refreshIcons: () => {
+          if (window.lucide) window.lucide.createIcons();
+        }
       });
 
       if (aiPolishStartBtn) {
@@ -16047,6 +16154,7 @@
           // previous inlined renderer had diverged from the CLI and could turn
           // a two-page layout into three pages because it trusted oversized AI
           // height estimates instead of the measured text height.
+          const { buildAiDocPdf } = await import('./ai-doc-pdf-core.js');
           const { bytes: pdfBytes } = await buildAiDocPdf({
             layout,
             fontRegularBytes: aiDocFontRegularBytes || undefined,
@@ -18478,6 +18586,14 @@
       const typingTestLangOptions = document.getElementById('typingTestLangOptions');
       const typingTestDifficultyOptions = document.getElementById('typingTestDifficultyOptions');
       const typingTestDurationOptions = document.getElementById('typingTestDurationOptions');
+      const typingTestSourceOptions = document.getElementById('typingTestSourceOptions');
+      const typingTestLangGroup = document.getElementById('typingTestLangGroup');
+      const typingTestDifficultyGroup = document.getElementById('typingTestDifficultyGroup');
+      const typingTestCustomGroup = document.getElementById('typingTestCustomGroup');
+      const typingTestFileInput = document.getElementById('typingTestFileInput');
+      const typingTestUploadBtn = document.getElementById('typingTestUploadBtn');
+      const typingTestClearBtn = document.getElementById('typingTestClearBtn');
+      const typingTestCustomMeta = document.getElementById('typingTestCustomMeta');
       const typingTestResultWpm = document.getElementById('typingTestResultWpm');
       const typingTestResultCpm = document.getElementById('typingTestResultCpm');
       const typingTestResultAccuracy = document.getElementById('typingTestResultAccuracy');
@@ -18489,10 +18605,15 @@
       let typingTestTimer = null;
       let typingTestComposing = false;
       let zhInputBuffer = '';
+      const TYPING_CUSTOM_KEY = 'hy.typing-custom-article.v1';
+      const TYPING_CUSTOM_MAX_BYTES = 200 * 1024;
       let typingTestState = {
+        source: 'builtin',
         lang: getLang() === 'zh' ? 'zh' : 'en',
         difficulty: 'easy',
         duration: 30,
+        customText: '',
+        customName: '',
         targetText: '',
         input: '',
         startTime: 0,
@@ -18506,6 +18627,69 @@
       };
 
       const TYPING_TEST_WORDS = typingWordsData;
+
+      function normalizeTypingArticle(text) {
+        return String(text || '')
+          .replace(/^\uFEFF/, '')
+          .replace(/\r\n/g, '\n')
+          .replace(/\r/g, '\n')
+          .replace(/\n+/g, ' ')
+          .replace(/[ \t\f\v]+/g, ' ')
+          .trim();
+      }
+
+      function detectTypingArticleLang(text) {
+        const sample = String(text || '').slice(0, 4000);
+        const cjk = (sample.match(/[\u4e00-\u9fff]/g) || []).length;
+        const latin = (sample.match(/[A-Za-z]/g) || []).length;
+        return cjk >= latin ? 'zh' : 'en';
+      }
+
+      function loadTypingCustomArticle() {
+        try {
+          const raw = localStorage.getItem(TYPING_CUSTOM_KEY);
+          if (!raw) return;
+          const data = JSON.parse(raw);
+          const text = normalizeTypingArticle(data?.text);
+          const name = typeof data?.name === 'string' ? data.name : '';
+          if (!text) return;
+          typingTestState.customText = text;
+          typingTestState.customName = name || 'article.txt';
+        } catch {}
+      }
+
+      function saveTypingCustomArticle(name, text) {
+        try {
+          localStorage.setItem(TYPING_CUSTOM_KEY, JSON.stringify({ name, text }));
+        } catch {}
+      }
+
+      function clearTypingCustomArticle() {
+        typingTestState.customText = '';
+        typingTestState.customName = '';
+        try { localStorage.removeItem(TYPING_CUSTOM_KEY); } catch {}
+        syncTypingCustomUi();
+      }
+
+      function syncTypingCustomUi() {
+        const isCustom = typingTestState.source === 'custom';
+        if (typingTestCustomGroup) typingTestCustomGroup.style.display = isCustom ? '' : 'none';
+        if (typingTestLangGroup) typingTestLangGroup.style.display = isCustom ? 'none' : '';
+        if (typingTestDifficultyGroup) typingTestDifficultyGroup.style.display = isCustom ? 'none' : '';
+        if (typingTestClearBtn) {
+          typingTestClearBtn.style.display = isCustom && typingTestState.customText ? '' : 'none';
+        }
+        if (typingTestCustomMeta) {
+          if (!typingTestState.customText) {
+            typingTestCustomMeta.textContent = t('home.typingTest.noArticle');
+          } else {
+            typingTestCustomMeta.textContent = t('home.typingTest.articleReady', {
+              name: typingTestState.customName || 'article.txt',
+              chars: String(typingTestState.customText.length)
+            });
+          }
+        }
+      }
 
       function generateTypingText(lang, difficulty) {
         const pool = TYPING_TEST_WORDS[lang]?.[difficulty] || TYPING_TEST_WORDS.zh.easy;
@@ -18578,7 +18762,33 @@
         typingTestText.innerHTML = '';
         const target = typingTestState.targetText;
         const input = typingTestState.input;
+        const strict = typingTestState.source === 'custom';
         const isPunctuation = (ch) => /[，。！？、；：\u201c\u201d\u2018\u2019（）【】《》…—·,.!?;:"'()\[\]{}]/.test(ch);
+
+        if (strict) {
+          const limit = Math.max(target.length, input.length);
+          for (let i = 0; i < limit; i++) {
+            if (i < target.length && i < input.length) {
+              const charSpan = document.createElement('span');
+              charSpan.className = 'typing-test-char';
+              charSpan.textContent = target[i];
+              charSpan.classList.add(input[i] === target[i] ? 'correct' : 'wrong');
+              typingTestText.appendChild(charSpan);
+            } else if (i < target.length) {
+              const charSpan = document.createElement('span');
+              charSpan.className = 'typing-test-char';
+              charSpan.textContent = target[i];
+              if (i === input.length) charSpan.classList.add('current');
+              typingTestText.appendChild(charSpan);
+            } else {
+              const extraSpan = document.createElement('span');
+              extraSpan.className = 'typing-test-char extra';
+              extraSpan.textContent = input[i];
+              typingTestText.appendChild(extraSpan);
+            }
+          }
+          return;
+        }
 
         let tIdx = 0, iIdx = 0;
         while (tIdx < target.length || iIdx < input.length) {
@@ -18686,7 +18896,18 @@
       }
 
       function startTypingTest() {
-        typingTestState.targetText = generateTypingText(typingTestState.lang, typingTestState.difficulty);
+        if (typingTestState.source === 'custom') {
+          const article = normalizeTypingArticle(typingTestState.customText);
+          if (!article) {
+            window.showToast?.(t('home.typingTest.needArticle'));
+            return;
+          }
+          typingTestState.customText = article;
+          typingTestState.lang = detectTypingArticleLang(article);
+          typingTestState.targetText = article;
+        } else {
+          typingTestState.targetText = generateTypingText(typingTestState.lang, typingTestState.difficulty);
+        }
         typingTestState.input = '';
         typingTestState.startTime = 0;
         typingTestState.timeLeft = typingTestState.duration;
@@ -18728,8 +18949,15 @@
       function openTypingTestOverlay() {
         if (!typingTestOverlay) return;
         typingTestOverlay.classList.add('visible');
-        typingTestState.lang = getLang() === 'zh' ? 'zh' : 'en';
+        if (typingTestState.source !== 'custom') {
+          typingTestState.lang = getLang() === 'zh' ? 'zh' : 'en';
+        }
+        loadTypingCustomArticle();
+        selectTypingTestOption(typingTestSourceOptions, typingTestState.source);
         selectTypingTestOption(typingTestLangOptions, typingTestState.lang);
+        selectTypingTestOption(typingTestDifficultyOptions, typingTestState.difficulty);
+        selectTypingTestOption(typingTestDurationOptions, String(typingTestState.duration));
+        syncTypingCustomUi();
         resetTypingTestToSettings();
         if (typingTestBg && !typingTestPlasmaInstance) {
           typingTestPlasmaInstance = initStandardToolPlasma(typingTestBg);
@@ -18749,11 +18977,12 @@
 
       function handleTypingInput() {
         if (!typingTestInput || typingTestState.isFinished || typingTestComposing) return;
+        const strict = typingTestState.source === 'custom';
         const rawVal = typingTestState.lang === 'zh' ? zhInputBuffer : typingTestInput.value;
         const target = typingTestState.targetText;
         const prevLen = typingTestState.input.length;
 
-        // 双指针比对：跳过标点，确保字符顺序一致
+        // Built-in: skip punctuation. Custom article: type every character in order.
         const isPunctuation = (ch) => /[，。！？、；：\u201c\u201d\u2018\u2019（）【】《》…—·,.!?;:"'()\[\]{}]/.test(ch);
         let targetChars = target.split('');
         let inputChars = rawVal.split('');
@@ -18761,26 +18990,39 @@
         let correct = 0, wrong = 0;
         let inputCharCount = 0;
 
-        while (tIdx < targetChars.length && iIdx < inputChars.length) {
-          while (tIdx < targetChars.length && isPunctuation(targetChars[tIdx])) tIdx++;
-          while (iIdx < inputChars.length && isPunctuation(inputChars[iIdx])) iIdx++;
-          if (tIdx < targetChars.length && iIdx < inputChars.length) {
-            inputCharCount++;
-            if (targetChars[tIdx] === inputChars[iIdx]) {
-              correct++;
-            } else {
-              wrong++;
+        if (strict) {
+          const n = Math.max(targetChars.length, inputChars.length);
+          for (let i = 0; i < n; i++) {
+            if (i < inputChars.length) {
+              inputCharCount++;
+              if (i < targetChars.length && targetChars[i] === inputChars[i]) correct++;
+              else wrong++;
             }
-            tIdx++;
+          }
+          tIdx = Math.min(inputChars.length, targetChars.length);
+          if (inputChars.length >= targetChars.length) tIdx = targetChars.length;
+        } else {
+          while (tIdx < targetChars.length && iIdx < inputChars.length) {
+            while (tIdx < targetChars.length && isPunctuation(targetChars[tIdx])) tIdx++;
+            while (iIdx < inputChars.length && isPunctuation(inputChars[iIdx])) iIdx++;
+            if (tIdx < targetChars.length && iIdx < inputChars.length) {
+              inputCharCount++;
+              if (targetChars[tIdx] === inputChars[iIdx]) {
+                correct++;
+              } else {
+                wrong++;
+              }
+              tIdx++;
+              iIdx++;
+            }
+          }
+          while (iIdx < inputChars.length) {
+            if (!isPunctuation(inputChars[iIdx])) {
+              wrong++;
+              inputCharCount++;
+            }
             iIdx++;
           }
-        }
-        while (iIdx < inputChars.length) {
-          if (!isPunctuation(inputChars[iIdx])) {
-            wrong++;
-            inputCharCount++;
-          }
-          iIdx++;
         }
 
         typingTestState.input = rawVal;
@@ -18803,17 +19045,19 @@
         if (rawVal.length > prevLen) {
           const lastIdx = rawVal.length - 1;
           const lastChar = rawVal[lastIdx];
-          if (!isPunctuation(lastChar)) {
-            if (lastChar === target[lastIdx]) {
-              playTypingSound();
-            } else {
-              playErrorSound();
-            }
+          const expected = target[lastIdx];
+          if (strict || !isPunctuation(lastChar)) {
+            if (lastChar === expected) playTypingSound();
+            else playErrorSound();
           }
         }
         renderTypingText();
         updateTypingStats();
-        if (wrong === 0 && tIdx >= targetChars.length && rawVal.length > 0) {
+        if (strict) {
+          if (rawVal.length >= target.length && rawVal.length > 0) {
+            endTypingTest();
+          }
+        } else if (wrong === 0 && tIdx >= targetChars.length && rawVal.length > 0) {
           endTypingTest();
         }
       }
@@ -18830,6 +19074,50 @@
       if (typingTestAgainBtn) typingTestAgainBtn.addEventListener('click', startTypingTest);
       if (typingTestBackBtn) typingTestBackBtn.addEventListener('click', resetTypingTestToSettings);
       if (typingTestBack) typingTestBack.addEventListener('click', closeTypingTestOverlay);
+      if (typingTestUploadBtn && typingTestFileInput) {
+        typingTestUploadBtn.addEventListener('click', () => typingTestFileInput.click());
+        typingTestFileInput.addEventListener('change', async () => {
+          const file = typingTestFileInput.files?.[0];
+          typingTestFileInput.value = '';
+          if (!file) return;
+          const name = String(file.name || '').toLowerCase();
+          if (!name.endsWith('.txt') || file.size <= 0 || file.size > TYPING_CUSTOM_MAX_BYTES) {
+            window.showToast?.(t('home.typingTest.invalidFile'));
+            return;
+          }
+          try {
+            const text = normalizeTypingArticle(await file.text());
+            if (!text) {
+              window.showToast?.(t('home.typingTest.emptyArticle'));
+              return;
+            }
+            typingTestState.customText = text;
+            typingTestState.customName = file.name;
+            typingTestState.source = 'custom';
+            selectTypingTestOption(typingTestSourceOptions, 'custom');
+            saveTypingCustomArticle(file.name, text);
+            syncTypingCustomUi();
+            window.showToast?.(t('home.typingTest.articleReady', {
+              name: file.name,
+              chars: String(text.length)
+            }));
+          } catch {
+            window.showToast?.(t('home.typingTest.invalidFile'));
+          }
+        });
+      }
+      if (typingTestClearBtn) {
+        typingTestClearBtn.addEventListener('click', () => clearTypingCustomArticle());
+      }
+      if (typingTestSourceOptions) {
+        typingTestSourceOptions.addEventListener('click', (e) => {
+          const btn = e.target.closest('.typing-test-option');
+          if (!btn) return;
+          typingTestState.source = btn.dataset.value === 'custom' ? 'custom' : 'builtin';
+          selectTypingTestOption(typingTestSourceOptions, typingTestState.source);
+          syncTypingCustomUi();
+        });
+      }
       if (typingTestInput) {
         typingTestInput.addEventListener('input', (e) => {
           if (e.isComposing || typingTestComposing) return;
@@ -18842,6 +19130,13 @@
           if (e.key === 'Backspace' && zhInputBuffer.length > 0) {
             zhInputBuffer = zhInputBuffer.slice(0, -1);
             handleTypingInput();
+            return;
+          }
+          // Custom articles require punctuation / space / latin typed outside IME.
+          if (typingTestState.source === 'custom' && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            e.preventDefault();
+            zhInputBuffer += e.key;
+            handleTypingInput();
           }
         });
         typingTestInput.addEventListener('compositionstart', () => { typingTestComposing = true; });
@@ -18849,9 +19144,11 @@
           typingTestComposing = false;
           if (typingTestState.lang === 'zh') {
             if (e.data) {
-              const cleanData = e.data.replace(/[，。！？、；：""''（）【】《》…—·,.!?;:"'()\[\]{}]/g, '');
-              if (cleanData) {
-                zhInputBuffer += cleanData;
+              if (typingTestState.source === 'custom') {
+                zhInputBuffer += e.data;
+              } else {
+                const cleanData = e.data.replace(/[，。！？、；：""''（）【】《》…—·,.!?;:"'()\[\]{}]/g, '');
+                if (cleanData) zhInputBuffer += cleanData;
               }
             }
             typingTestInput.value = '';
@@ -18892,6 +19189,9 @@
           selectTypingTestOption(typingTestDurationOptions, btn.dataset.value);
         });
       }
+
+      loadTypingCustomArticle();
+      syncTypingCustomUi();
 
       // Tool list entry
       document.querySelectorAll('.audio-list-item[data-tool="typing-test"]').forEach(item => {
@@ -21632,14 +21932,611 @@
         renderRecent();
       });
 
-      initHYExtraTools({
-        t,
-        toast: (message) => window.showToast?.(message),
-        escapeHtml,
-        getOutputDir,
-        initPlasma: initStandardToolPlasma,
-        disposePlasma: (dispose) => disposeStandardToolPlasma(dispose),
-        isTauri,
-        ensureFfmpegAvailable,
-        openWithFfmpegCheck: openToolWithFfmpegCheck
-      });
+      // HY extra tools (lazy): load only when one of these tools is opened.
+      {
+        const HY_EXTRA_TOOL_IDS = [
+          'hash-tool',
+          'json-format',
+          'text-diff',
+          'image-to-pdf',
+          'image-transform',
+          'img-resize',
+          'img-crop',
+          'grid-split',
+          'img-flip-rotate',
+          'video-compress',
+          'text-extract',
+          'pdf-word',
+          'heic-convert',
+          'image-matting',
+          'watermark-remove'
+        ];
+        let hyExtraReady = false;
+        let hyExtraInitPromise = null;
+        const ensureHYExtraTools = () => {
+          if (!hyExtraInitPromise) {
+            hyExtraInitPromise = import('./hy-extra-tools.js').then(({ initHYExtraTools }) => {
+              initHYExtraTools({
+                t,
+                toast: (message) => window.showToast?.(message),
+                escapeHtml,
+                getOutputDir,
+                initPlasma: initStandardToolPlasma,
+                disposePlasma: (dispose) => disposeStandardToolPlasma(dispose),
+                isTauri,
+                ensureFfmpegAvailable,
+                openWithFfmpegCheck: openToolWithFfmpegCheck
+              });
+              hyExtraReady = true;
+            });
+          }
+          return hyExtraInitPromise;
+        };
+        HY_EXTRA_TOOL_IDS.forEach((toolId) => {
+          document.querySelectorAll(`.audio-list-item[data-tool="${toolId}"]`).forEach((item) => {
+            const gate = async (event) => {
+              if (hyExtraReady) return;
+              event.preventDefault();
+              event.stopImmediatePropagation();
+              try {
+                await ensureHYExtraTools();
+              } catch (error) {
+                console.error('Failed to load extra tools:', error);
+                window.showToast?.(String(error?.message || error));
+                return;
+              }
+              item.click();
+            };
+            item.addEventListener('click', gate, true);
+            item.addEventListener('keydown', (event) => {
+              if (event.key === 'Enter' || event.key === ' ') gate(event);
+            }, true);
+          });
+        });
+      }
+
+      // Screen screenshot tool (Alt+A). QQ/WeChat-like: select → annotate → confirm.
+      (() => {
+        const overlay = document.getElementById('screenshotOverlay');
+        const back = document.getElementById('screenshotBack');
+        const bg = document.getElementById('screenshotBg');
+        const regionBtn = document.getElementById('screenshotRegionBtn');
+        const fullscreenBtn = document.getElementById('screenshotFullscreenBtn');
+        const lastPath = document.getElementById('screenshotLastPath');
+        const regionOverlay = document.getElementById('regionScreenshotOverlay');
+        const regionStage = document.getElementById('regionScreenshotStage');
+        const regionMask = document.getElementById('regionScreenshotMask');
+        const regionSelection = document.getElementById('regionScreenshotSelection');
+        const regionSize = document.getElementById('regionScreenshotSize');
+        const regionToolbar = document.getElementById('regionScreenshotToolbar');
+        const regionHint = document.getElementById('regionScreenshotHint');
+        const annotateCanvas = document.getElementById('regionScreenshotAnnotate');
+        const annotateCtx = annotateCanvas?.getContext('2d');
+        let plasma = null;
+        let regionMeta = null;
+        let previewImg = null;
+        let previewUrl = null;
+        let dragStart = null;
+        let currentRect = null;
+        let phase = 'selecting'; // selecting | editing
+        let confirming = false;
+        let drawTool = 'pen';
+        let drawing = false;
+        let shapeStart = null;
+        let shapeBase = null;
+        let undoStack = [];
+        let annotateDirty = false;
+        let regionPreviewUrl = null;
+
+        const open = () => {
+          if (!overlay) return;
+          overlay.classList.add('visible');
+          if (bg && !plasma) plasma = initStandardToolPlasma(bg);
+        };
+        const close = () => {
+          if (!overlay) return;
+          overlay.classList.remove('visible');
+          plasma = disposeStandardToolPlasma(plasma);
+        };
+        const markResult = (path) => {
+          if (!lastPath) return;
+          lastPath.textContent = t('home.screenshot.lastPath', { path });
+        };
+
+        const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+        const toImageRect = (clientRect) => {
+          const scaleX = (regionMeta?.width || regionStage.clientWidth) / Math.max(1, regionStage.clientWidth);
+          const scaleY = (regionMeta?.height || regionStage.clientHeight) / Math.max(1, regionStage.clientHeight);
+          return {
+            x: Math.round(clientRect.x * scaleX),
+            y: Math.round(clientRect.y * scaleY),
+            width: Math.max(1, Math.round(clientRect.width * scaleX)),
+            height: Math.max(1, Math.round(clientRect.height * scaleY))
+          };
+        };
+        const setHint = (text) => {
+          if (regionHint) regionHint.textContent = text;
+        };
+        const pushUndo = () => {
+          if (!annotateCanvas) return;
+          try {
+            undoStack.push(annotateCanvas.toDataURL('image/png'));
+            if (undoStack.length > 30) undoStack.shift();
+          } catch {}
+        };
+        const clearAnnotate = () => {
+          if (!annotateCanvas || !annotateCtx) return;
+          annotateCtx.clearRect(0, 0, annotateCanvas.width, annotateCanvas.height);
+          undoStack = [];
+          annotateDirty = false;
+        };
+        const revokeRegionPreview = () => {
+          if (regionPreviewUrl) {
+            URL.revokeObjectURL(regionPreviewUrl);
+            regionPreviewUrl = null;
+          }
+          previewImg = null;
+        };
+        const syncAnnotateCanvas = (rect) => {
+          if (!annotateCanvas || !rect) return;
+          const w = Math.max(1, Math.round(rect.width));
+          const h = Math.max(1, Math.round(rect.height));
+          if (annotateCanvas.width !== w || annotateCanvas.height !== h) {
+            annotateCanvas.width = w;
+            annotateCanvas.height = h;
+            undoStack = [];
+          }
+          annotateCanvas.style.width = '100%';
+          annotateCanvas.style.height = '100%';
+        };
+        const placeToolbar = (rect) => {
+          if (!regionToolbar || !rect) return;
+          regionToolbar.hidden = false;
+          const top = rect.y + rect.height + 10;
+          const left = Math.max(8, Math.min(rect.x, window.innerWidth - 360));
+          const maxTop = window.innerHeight - 56;
+          regionToolbar.style.left = `${left}px`;
+          regionToolbar.style.top = `${Math.min(top, maxTop)}px`;
+        };
+        const hideToolbar = () => {
+          if (regionToolbar) regionToolbar.hidden = true;
+        };
+        const renderRect = (rect) => {
+          if (!regionSelection || !regionSize || !regionMask) return;
+          if (!rect || rect.width < 2 || rect.height < 2) {
+            regionSelection.style.display = 'none';
+            regionSize.style.display = 'none';
+            regionMask.style.display = 'block';
+            hideToolbar();
+            return;
+          }
+          regionMask.style.display = 'none';
+          regionSelection.style.display = 'block';
+          regionSelection.style.left = `${rect.x}px`;
+          regionSelection.style.top = `${rect.y}px`;
+          regionSelection.style.width = `${rect.width}px`;
+          regionSelection.style.height = `${rect.height}px`;
+          regionSize.style.display = 'block';
+          regionSize.style.left = `${Math.max(12, rect.x)}px`;
+          regionSize.style.top = `${Math.max(12, rect.y - 28)}px`;
+          const imageRect = toImageRect(rect);
+          regionSize.textContent = `${imageRect.width} × ${imageRect.height}`;
+          syncAnnotateCanvas(rect);
+          if (phase === 'editing') placeToolbar(rect);
+          else hideToolbar();
+        };
+        const loadRegionPreview = async (imgRect) => {
+          const { invoke } = await import('@tauri-apps/api/core');
+          const b64 = await invoke('export_pending_region_png_base64', imgRect);
+          const binary = atob(b64);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+          revokeRegionPreview();
+          regionPreviewUrl = URL.createObjectURL(new Blob([bytes], { type: 'image/png' }));
+          previewImg = await new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = () => reject(new Error('Cannot load region preview'));
+            img.src = regionPreviewUrl;
+          });
+        };
+        const enterEditing = () => {
+          phase = 'editing';
+          setHint('可标注：画笔 / 矩形 / 箭头 / 马赛克，完成后点 ✓');
+          renderRect(currentRect);
+          regionOverlay?.classList.add('is-editing');
+          // Load only the selected crop (small) for mosaic / annotated export.
+          if (currentRect) {
+            const imgRect = toImageRect(currentRect);
+            void loadRegionPreview(imgRect).catch((error) => {
+              console.warn('Region preview load failed:', error);
+            });
+          }
+        };
+        const enterSelecting = () => {
+          phase = 'selecting';
+          drawing = false;
+          shapeStart = null;
+          clearAnnotate();
+          revokeRegionPreview();
+          hideToolbar();
+          setHint('拖拽选择截图区域');
+          regionOverlay?.classList.remove('is-editing');
+          if (currentRect) renderRect(currentRect);
+        };
+        const hideRegionUi = () => {
+          if (!regionOverlay) return;
+          regionOverlay.hidden = true;
+          regionOverlay.setAttribute('aria-hidden', 'true');
+          regionOverlay.classList.remove('is-editing');
+          document.body.classList.remove('is-region-screenshot');
+          if (regionStage) regionStage.style.backgroundImage = '';
+          if (previewUrl) {
+            URL.revokeObjectURL(previewUrl);
+            previewUrl = null;
+          }
+          revokeRegionPreview();
+          dragStart = null;
+          currentRect = null;
+          confirming = false;
+          regionMeta = null;
+          phase = 'selecting';
+          drawing = false;
+          shapeStart = null;
+          clearAnnotate();
+          hideToolbar();
+          renderRect(null);
+        };
+        const drawArrow = (ctx, x1, y1, x2, y2) => {
+          const head = 12;
+          const angle = Math.atan2(y2 - y1, x2 - x1);
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x2, y2);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(x2, y2);
+          ctx.lineTo(x2 - head * Math.cos(angle - 0.4), y2 - head * Math.sin(angle - 0.4));
+          ctx.lineTo(x2 - head * Math.cos(angle + 0.4), y2 - head * Math.sin(angle + 0.4));
+          ctx.closePath();
+          ctx.fill();
+        };
+        const stampMosaic = (x, y, size = 14) => {
+          // previewImg is the cropped region (0,0 = selection top-left).
+          if (!annotateCtx || !previewImg || !currentRect) return;
+          const scaleX = previewImg.naturalWidth / Math.max(1, currentRect.width);
+          const scaleY = previewImg.naturalHeight / Math.max(1, currentRect.height);
+          const srcX = x * scaleX;
+          const srcY = y * scaleY;
+          const cell = 8;
+          const sw = Math.max(1, cell * scaleX);
+          const sh = Math.max(1, cell * scaleY);
+          try {
+            annotateCtx.imageSmoothingEnabled = false;
+            annotateCtx.drawImage(
+              previewImg,
+              srcX,
+              srcY,
+              sw,
+              sh,
+              x - size / 2,
+              y - size / 2,
+              size,
+              size
+            );
+            annotateDirty = true;
+          } catch {}
+        };
+        const bytesToBase64 = (bytes) => {
+          let binary = '';
+          const chunk = 0x2000;
+          for (let i = 0; i < bytes.length; i += chunk) {
+            binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+          }
+          return btoa(binary);
+        };
+        const confirmRegion = async () => {
+          if (confirming || phase !== 'editing' || !currentRect || currentRect.width < 2) return;
+          confirming = true;
+          try {
+            const { invoke } = await import('@tauri-apps/api/core');
+            const imgRect = toImageRect(currentRect);
+            const hasAnnotations = annotateDirty;
+
+            // No annotations: crop from Rust pending buffer (avoids large IPC / canvas taint).
+            if (!hasAnnotations) {
+              await invoke('confirm_screenshot_region', imgRect);
+              return;
+            }
+
+            if (!previewImg) {
+              await loadRegionPreview(imgRect);
+            }
+            if (!previewImg) throw new Error('Preview image missing');
+            const out = document.createElement('canvas');
+            out.width = previewImg.naturalWidth || imgRect.width;
+            out.height = previewImg.naturalHeight || imgRect.height;
+            const ctx = out.getContext('2d');
+            if (!ctx) throw new Error('Canvas unavailable');
+            ctx.drawImage(previewImg, 0, 0, out.width, out.height);
+            ctx.drawImage(annotateCanvas, 0, 0, out.width, out.height);
+            const blob = await new Promise((resolve, reject) => {
+              out.toBlob((b) => (b ? resolve(b) : reject(new Error('toBlob failed'))), 'image/png');
+            });
+            const buffer = new Uint8Array(await blob.arrayBuffer());
+            await invoke('complete_screenshot_png', { dataBase64: bytesToBase64(buffer) });
+          } catch (error) {
+            confirming = false;
+            const message = String(error?.message || error || 'unknown');
+            console.error('Screenshot confirm failed:', error);
+            try {
+              const { invoke } = await import('@tauri-apps/api/core');
+              await invoke('cancel_screenshot');
+            } catch {}
+            window.showToast?.(t('home.screenshot.failed', { error: message }));
+          }
+        };
+        const cancelRegion = async () => {
+          if (confirming) return;
+          confirming = true;
+          try {
+            const { invoke } = await import('@tauri-apps/api/core');
+            await invoke('cancel_screenshot');
+          } catch (error) {
+            console.error(error);
+          } finally {
+            hideRegionUi();
+          }
+        };
+        const openRegionUi = async (meta) => {
+          if (!regionOverlay || !regionStage) return;
+          regionMeta = meta;
+          confirming = false;
+          dragStart = null;
+          currentRect = null;
+          phase = 'selecting';
+          clearAnnotate();
+          revokeRegionPreview();
+          hideToolbar();
+          setHint('拖拽选择截图区域');
+          try {
+            // Display via asset protocol — do NOT pull full-desktop PNG over IPC.
+            const { convertFileSrc } = await import('@tauri-apps/api/core');
+            if (previewUrl) {
+              URL.revokeObjectURL(previewUrl);
+              previewUrl = null;
+            }
+            regionStage.style.backgroundImage = `url("${convertFileSrc(meta.path)}")`;
+          } catch (error) {
+            console.error('Screenshot preview failed:', error);
+            window.showToast?.(
+              t('home.screenshot.failed', { error: String(error?.message || error) })
+            );
+            await cancelRegion();
+            return;
+          }
+          document.body.classList.add('is-region-screenshot');
+          regionOverlay.hidden = false;
+          regionOverlay.setAttribute('aria-hidden', 'false');
+          renderRect(null);
+        };
+
+        back?.addEventListener('click', close);
+        document.querySelectorAll('.audio-list-item[data-tool="screenshot"]').forEach((item) => {
+          item.addEventListener('click', open);
+          item.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              open();
+            }
+          });
+        });
+
+        regionBtn?.addEventListener('click', async () => {
+          if (!isTauri) {
+            window.showToast?.(t('home.screenshot.desktopOnly'));
+            return;
+          }
+          try {
+            const { invoke } = await import('@tauri-apps/api/core');
+            await invoke('start_region_screenshot');
+          } catch (error) {
+            window.showToast?.(t('home.screenshot.failed', { error: String(error?.message || error) }));
+          }
+        });
+
+        fullscreenBtn?.addEventListener('click', async () => {
+          if (!isTauri) {
+            window.showToast?.(t('home.screenshot.desktopOnly'));
+            return;
+          }
+          try {
+            const { invoke } = await import('@tauri-apps/api/core');
+            const result = await invoke('start_fullscreen_screenshot');
+            if (result?.path) {
+              markResult(result.path);
+              window.showToast?.(t('home.screenshot.done', { path: result.path }));
+            }
+          } catch (error) {
+            window.showToast?.(t('home.screenshot.failed', { error: String(error?.message || error) }));
+          }
+        });
+
+        regionToolbar?.querySelectorAll('[data-tool]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            drawTool = btn.dataset.tool || 'pen';
+            regionToolbar.querySelectorAll('[data-tool]').forEach((el) => el.classList.toggle('active', el === btn));
+          });
+        });
+        document.getElementById('regionShotUndo')?.addEventListener('click', () => {
+          if (!annotateCtx || !undoStack.length) return;
+          const prev = undoStack.pop();
+          const img = new Image();
+          img.onload = () => {
+            annotateCtx.clearRect(0, 0, annotateCanvas.width, annotateCanvas.height);
+            annotateCtx.drawImage(img, 0, 0);
+            annotateDirty = undoStack.length > 0;
+          };
+          img.src = prev;
+        });
+        document.getElementById('regionShotReselect')?.addEventListener('click', () => {
+          currentRect = null;
+          enterSelecting();
+          renderRect(null);
+        });
+        document.getElementById('regionShotCancel')?.addEventListener('click', () => {
+          void cancelRegion();
+        });
+        document.getElementById('regionShotConfirm')?.addEventListener('click', () => {
+          void confirmRegion();
+        });
+
+        const localPoint = (event) => {
+          const rect = regionSelection.getBoundingClientRect();
+          return {
+            x: clamp(event.clientX - rect.left, 0, rect.width),
+            y: clamp(event.clientY - rect.top, 0, rect.height)
+          };
+        };
+
+        regionStage?.addEventListener('mousedown', (event) => {
+          if (event.button !== 0 || confirming || regionOverlay?.hidden) return;
+          if (phase === 'editing') {
+            // New selection only when clicking outside current box (on dimmed area).
+            if (event.target === annotateCanvas || regionSelection?.contains(event.target)) {
+              if (!annotateCtx || !currentRect) return;
+              const p = localPoint(event);
+              pushUndo();
+              drawing = true;
+              shapeStart = p;
+              shapeBase = annotateCtx.getImageData(0, 0, annotateCanvas.width, annotateCanvas.height);
+              annotateCtx.strokeStyle = '#ff4d4f';
+              annotateCtx.fillStyle = '#ff4d4f';
+              annotateCtx.lineWidth = 3;
+              annotateCtx.lineCap = 'round';
+              annotateCtx.lineJoin = 'round';
+              if (drawTool === 'pen') {
+                annotateCtx.beginPath();
+                annotateCtx.moveTo(p.x, p.y);
+                annotateDirty = true;
+              } else if (drawTool === 'mosaic') {
+                stampMosaic(p.x, p.y);
+              } else {
+                annotateDirty = true;
+              }
+              event.preventDefault();
+              return;
+            }
+          }
+          // Selecting / reselecting region
+          phase = 'selecting';
+          hideToolbar();
+          clearAnnotate();
+          dragStart = {
+            x: clamp(event.clientX, 0, regionStage.clientWidth),
+            y: clamp(event.clientY, 0, regionStage.clientHeight)
+          };
+          currentRect = { x: dragStart.x, y: dragStart.y, width: 0, height: 0 };
+          renderRect(currentRect);
+        });
+
+        window.addEventListener('mousemove', (event) => {
+          if (confirming || regionOverlay?.hidden) return;
+          if (drawing && phase === 'editing' && annotateCtx && shapeStart) {
+            const p = localPoint(event);
+            if (drawTool === 'pen') {
+              annotateCtx.lineTo(p.x, p.y);
+              annotateCtx.stroke();
+              annotateCtx.beginPath();
+              annotateCtx.moveTo(p.x, p.y);
+              annotateDirty = true;
+            } else if (drawTool === 'mosaic') {
+              stampMosaic(p.x, p.y);
+            } else if ((drawTool === 'rect' || drawTool === 'arrow') && shapeBase) {
+              annotateCtx.putImageData(shapeBase, 0, 0);
+              annotateCtx.strokeStyle = '#ff4d4f';
+              annotateCtx.fillStyle = '#ff4d4f';
+              annotateCtx.lineWidth = 3;
+              if (drawTool === 'rect') {
+                annotateCtx.strokeRect(
+                  Math.min(shapeStart.x, p.x),
+                  Math.min(shapeStart.y, p.y),
+                  Math.abs(p.x - shapeStart.x),
+                  Math.abs(p.y - shapeStart.y)
+                );
+              } else {
+                drawArrow(annotateCtx, shapeStart.x, shapeStart.y, p.x, p.y);
+              }
+              annotateDirty = true;
+            }
+            return;
+          }
+          if (!dragStart || phase !== 'selecting') return;
+          const x2 = clamp(event.clientX, 0, regionStage.clientWidth);
+          const y2 = clamp(event.clientY, 0, regionStage.clientHeight);
+          currentRect = {
+            x: Math.min(dragStart.x, x2),
+            y: Math.min(dragStart.y, y2),
+            width: Math.abs(x2 - dragStart.x),
+            height: Math.abs(y2 - dragStart.y)
+          };
+          renderRect(currentRect);
+        });
+
+        window.addEventListener('mouseup', () => {
+          if (confirming || regionOverlay?.hidden) return;
+          if (drawing && phase === 'editing') {
+            drawing = false;
+            shapeStart = null;
+            shapeBase = null;
+            return;
+          }
+          if (!dragStart || phase !== 'selecting') return;
+          dragStart = null;
+          if (currentRect && currentRect.width >= 8 && currentRect.height >= 8) {
+            enterEditing();
+          } else {
+            currentRect = null;
+            renderRect(null);
+            setHint('拖拽选择截图区域');
+          }
+        });
+
+        window.addEventListener('keydown', async (event) => {
+          if (regionOverlay?.hidden) return;
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            await cancelRegion();
+          } else if (event.key === 'Enter' && phase === 'editing') {
+            event.preventDefault();
+            await confirmRegion();
+          }
+        });
+
+        if (isTauri) {
+          (async () => {
+            try {
+              const { listen } = await import('@tauri-apps/api/event');
+              await listen('screenshot-region-open', (event) => {
+                void openRegionUi(event.payload);
+              });
+              await listen('screenshot-region-close', () => {
+                hideRegionUi();
+              });
+              await listen('screenshot-finished', (event) => {
+                hideRegionUi();
+                const path = event?.payload?.path;
+                if (!path) return;
+                markResult(path);
+                window.showToast?.(t('home.screenshot.done', { path }));
+              });
+              await listen('screenshot-error', (event) => {
+                hideRegionUi();
+                window.showToast?.(t('home.screenshot.failed', { error: String(event?.payload || '') }));
+              });
+            } catch (error) {
+              console.error('Cannot listen for screenshot events:', error);
+            }
+          })();
+        }
+      })();

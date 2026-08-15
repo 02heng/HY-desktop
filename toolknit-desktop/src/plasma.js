@@ -1,6 +1,7 @@
 import { Renderer, Program, Mesh, Triangle } from 'ogl';
 
-const BACKGROUND_DPR_MAX = 1.25;
+const BACKGROUND_DPR_MAX = 1;
+const BACKGROUND_FRAME_MS = 1000 / 30;
 
 const hexToRgb = hex => {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
@@ -163,6 +164,7 @@ export function initPlasma(containerEl, options = {}) {
   setSize();
 
   let raf = 0;
+  let lastFrameAt = 0;
   let contextLost = false;
   let isVisible = true;
   let pageVisible = typeof document === 'undefined' || !document.hidden;
@@ -184,6 +186,11 @@ export function initPlasma(containerEl, options = {}) {
   const loop = t => {
     raf = 0;
     if (contextLost || !isVisible || !pageVisible) return;
+    if (t - lastFrameAt < BACKGROUND_FRAME_MS) {
+      startLoop();
+      return;
+    }
+    lastFrameAt = t;
     let timeValue = (t - t0) * 0.001;
     if (direction === 'pingpong') {
       const pingpongDuration = 10;

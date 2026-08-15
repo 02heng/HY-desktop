@@ -11,3 +11,6 @@
 /src-tauri/resources/whisper/Release/parakeet*.dll
 /tmp/
 /output/
+# Copied from onnxruntime-web by scripts/copy-ort-wasm.mjs (postinstall)
+/public/ort/*.wasm
+/public/ort/*.mjs

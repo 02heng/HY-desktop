@@ -1,4 +1,4 @@
-﻿import { hashText, HASH_LIMITS, HashError, normalizeHashAlgorithm } from './hash-core.js';
+import { hashText, HASH_LIMITS, HashError, normalizeHashAlgorithm } from './hash-core.js';
 import { formatJson, minifyJson, JSON_FORMAT_LIMITS, JsonFormatError } from './json-format-core.js';
 import {
   diffLines,
@@ -29,6 +29,16 @@ import {
   PdfWordError
 } from './pdf-word-core.js';
 import { validateVideoBatchSelection, VideoConvertError } from './video-convert-core.js';
+import {
+  removeImageBackground,
+  ImageMattingError
+} from './image-matting-core.js';
+import {
+  inpaintImageData,
+  stampBrushMask,
+  WatermarkRemoveError,
+  WATERMARK_REMOVE_LIMITS
+} from './watermark-remove-core.js';
 
 function bindToolOpen(toolId, openFn) {
   document.querySelectorAll(`.audio-list-item[data-tool="${toolId}"]`).forEach((item) => {
@@ -59,6 +69,50 @@ function setupOverlay(overlayId, backId, bgId, { initPlasma, disposePlasma }) {
   };
   if (back) back.addEventListener('click', close);
   return { overlay, open, close };
+}
+
+/** Shared progress control for image tools (determinate or indeterminate). */
+function createImageProgress(progressId, fillId, textId) {
+  const root = document.getElementById(progressId);
+  const fill = document.getElementById(fillId);
+  const textEl = document.getElementById(textId);
+  return {
+    /** Show progress bar + message. Omit percent for indeterminate. */
+    show(message, percent) {
+      if (!root) return;
+      root.classList.add('is-active', 'is-busy');
+      root.classList.remove('is-idle');
+      const hasPercent = Number.isFinite(percent);
+      root.classList.toggle('is-indeterminate', !hasPercent);
+      if (fill) fill.style.width = hasPercent ? `${Math.max(0, Math.min(100, percent))}%` : '';
+      if (textEl) textEl.textContent = message || '';
+    },
+    /** Status text only (no bar) — after load / done / hints. */
+    idle(message) {
+      if (!root) return;
+      root.classList.add('is-active', 'is-idle');
+      root.classList.remove('is-busy', 'is-indeterminate');
+      if (fill) fill.style.width = '0%';
+      if (textEl) textEl.textContent = message || '';
+    },
+    hide() {
+      if (!root) return;
+      root.classList.remove('is-active', 'is-indeterminate', 'is-busy', 'is-idle');
+      if (fill) fill.style.width = '0%';
+      if (textEl) textEl.textContent = '';
+    },
+    setText(message) {
+      if (textEl) textEl.textContent = message || '';
+    }
+  };
+}
+
+/** Fit canvas CSS box into the stage so the image stays visually centered. */
+function fitCanvasInStage(canvas, maxWidth = 880, maxHeight = 360) {
+  if (!canvas?.width || !canvas?.height) return;
+  const scale = Math.min(1, maxWidth / canvas.width, maxHeight / canvas.height);
+  canvas.style.width = `${Math.max(1, Math.round(canvas.width * scale))}px`;
+  canvas.style.height = `${Math.max(1, Math.round(canvas.height * scale))}px`;
 }
 
 function initHashTool(deps) {
@@ -677,6 +731,275 @@ function initHeicTool(deps) {
   bindToolOpen('heic-convert', open);
 }
 
+function initImageMattingTool(deps) {
+  const { open, close } = setupOverlay('imageMattingOverlay', 'imageMattingBack', 'imageMattingBg', deps);
+  const previewWrap = document.getElementById('imageMattingPreviewWrap');
+  const previewImg = document.getElementById('imageMattingPreview');
+  const saveBtn = document.getElementById('imageMattingSaveBtn');
+  const progress = createImageProgress(
+    'imageMattingProgress',
+    'imageMattingProgressFill',
+    'imageMattingStatus'
+  );
+  let resultBlob = null;
+  let resultUrl = null;
+
+  const clearPreview = () => {
+    resultBlob = null;
+    if (resultUrl) {
+      URL.revokeObjectURL(resultUrl);
+      resultUrl = null;
+    }
+    if (previewImg) previewImg.removeAttribute('src');
+    if (previewWrap) previewWrap.style.display = 'none';
+    progress.hide();
+  };
+
+  const showPreview = () => {
+    if (previewWrap) previewWrap.style.display = 'flex';
+  };
+
+  document.getElementById('imageMattingCta')?.addEventListener('click', async () => {
+    try {
+      if (!deps.isTauri) {
+        deps.toast(deps.t('home.imageMatting.desktopOnly') || '需要桌面端运行');
+        return;
+      }
+      const picked = await pickImageFiles(false);
+      if (!picked.length) return;
+      const file = picked[0];
+      clearPreview();
+      progress.show(deps.t('home.imageMatting.loading') || '正在抠图，首次可能下载模型…');
+      const { invoke } = await import('@tauri-apps/api/core');
+      const bytes = new Uint8Array(await invoke('read_file_bytes', { path: file.path }));
+      resultBlob = await removeImageBackground(bytes, {
+        onProgress: (key, current, total) => {
+          const percent = total > 0 ? Math.round((current / total) * 100) : NaN;
+          const message =
+            deps.t('home.imageMatting.progress', {
+              key,
+              percent: Number.isFinite(percent) ? percent : 0
+            }) || `${key} ${Number.isFinite(percent) ? `${percent}%` : ''}`.trim();
+          progress.show(message, percent);
+        }
+      });
+      resultUrl = URL.createObjectURL(resultBlob);
+      if (previewImg) previewImg.src = resultUrl;
+      showPreview();
+      progress.idle(deps.t('home.imageMatting.ready') || '抠图完成，可保存透明 PNG');
+    } catch (error) {
+      clearPreview();
+      deps.toast(
+        error instanceof ImageMattingError
+          ? error.message
+          : deps.t('home.imageMatting.failed', { error: String(error?.message || error) }) ||
+              String(error?.message || error)
+      );
+    }
+  });
+
+  saveBtn?.addEventListener('click', async () => {
+    try {
+      if (!resultBlob || !deps.isTauri) return;
+      const { invoke } = await import('@tauri-apps/api/core');
+      const buffer = new Uint8Array(await resultBlob.arrayBuffer());
+      const outputDir = await deps.getOutputDir('Images/Image Matting');
+      const outputPath = await invoke('write_unique_file_bytes', {
+        directory: outputDir,
+        fileName: 'hy-matting.png',
+        bytes: Array.from(buffer)
+      });
+      deps.toast((deps.t('home.imageMatting.saved') || '已保存：') + outputPath);
+      close();
+    } catch (error) {
+      deps.toast(String(error?.message || error));
+    }
+  });
+
+  bindToolOpen('image-matting', open);
+}
+
+function initWatermarkRemoveTool(deps) {
+  const { open, close } = setupOverlay(
+    'watermarkRemoveOverlay',
+    'watermarkRemoveBack',
+    'watermarkRemoveBg',
+    deps
+  );
+  const editor = document.getElementById('watermarkRemoveEditor');
+  const canvas = document.getElementById('watermarkRemoveCanvas');
+  const brushInput = document.getElementById('watermarkRemoveBrush');
+  const progress = createImageProgress(
+    'watermarkRemoveProgress',
+    'watermarkRemoveProgressFill',
+    'watermarkRemoveStatus'
+  );
+  const ctx = canvas?.getContext('2d');
+
+  let sourceImageData = null;
+  let workingImageData = null;
+  let mask = null;
+  let drawing = false;
+
+  function redraw() {
+    if (!ctx || !workingImageData) return;
+    ctx.putImageData(workingImageData, 0, 0);
+    if (!mask) return;
+    const overlay = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    for (let i = 0; i < mask.length; i += 1) {
+      if (mask[i] === 0) continue;
+      const p = i * 4;
+      overlay.data[p] = Math.min(255, overlay.data[p] * 0.55 + 255 * 0.45);
+      overlay.data[p + 1] = Math.min(255, overlay.data[p + 1] * 0.55 + 80 * 0.45);
+      overlay.data[p + 2] = Math.min(255, overlay.data[p + 2] * 0.55 + 80 * 0.45);
+    }
+    ctx.putImageData(overlay, 0, 0);
+  }
+
+  function canvasPoint(event) {
+    const rect = canvas.getBoundingClientRect();
+    const x = ((event.clientX - rect.left) / Math.max(1, rect.width)) * canvas.width;
+    const y = ((event.clientY - rect.top) / Math.max(1, rect.height)) * canvas.height;
+    return { x, y };
+  }
+
+  document.getElementById('watermarkRemoveCta')?.addEventListener('click', async () => {
+    try {
+      if (!deps.isTauri) {
+        deps.toast(deps.t('home.watermarkRemove.desktopOnly') || '需要桌面端运行');
+        return;
+      }
+      const picked = await pickImageFiles(false);
+      if (!picked.length || !canvas || !ctx) return;
+      progress.show(deps.t('home.watermarkRemove.loading') || '正在加载图片…');
+      const { invoke } = await import('@tauri-apps/api/core');
+      const bytes = new Uint8Array(await invoke('read_file_bytes', { path: picked[0].path }));
+      const blob = new Blob([bytes]);
+      const bitmap = await createImageBitmap(blob);
+      if (
+        bitmap.width > WATERMARK_REMOVE_LIMITS.maxWidth ||
+        bitmap.height > WATERMARK_REMOVE_LIMITS.maxHeight
+      ) {
+        throw new WatermarkRemoveError('too_large', 'Image is too large');
+      }
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      ctx.drawImage(bitmap, 0, 0);
+      fitCanvasInStage(canvas);
+      sourceImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      workingImageData = new ImageData(
+        new Uint8ClampedArray(sourceImageData.data),
+        canvas.width,
+        canvas.height
+      );
+      mask = new Uint8ClampedArray(canvas.width * canvas.height);
+      if (editor) editor.style.display = 'flex';
+      progress.idle(deps.t('home.watermarkRemove.hint') || '涂抹水印区域后点击「开始消除」');
+      redraw();
+      bitmap.close?.();
+    } catch (error) {
+      progress.hide();
+      deps.toast(error instanceof WatermarkRemoveError ? error.message : String(error?.message || error));
+    }
+  });
+
+  canvas?.addEventListener('mousedown', (event) => {
+    if (!mask) return;
+    drawing = true;
+    const { x, y } = canvasPoint(event);
+    stampBrushMask(mask, canvas.width, canvas.height, x, y, Number(brushInput?.value || 28) / 2);
+    redraw();
+  });
+  window.addEventListener('mousemove', (event) => {
+    if (!drawing || !mask) return;
+    const { x, y } = canvasPoint(event);
+    stampBrushMask(mask, canvas.width, canvas.height, x, y, Number(brushInput?.value || 28) / 2);
+    redraw();
+  });
+  window.addEventListener('mouseup', () => {
+    drawing = false;
+  });
+
+  document.getElementById('watermarkRemoveClearMask')?.addEventListener('click', () => {
+    if (!mask || !sourceImageData) return;
+    mask.fill(0);
+    workingImageData = new ImageData(
+      new Uint8ClampedArray(sourceImageData.data),
+      canvas.width,
+      canvas.height
+    );
+    redraw();
+    progress.idle(deps.t('home.watermarkRemove.hint') || '涂抹水印区域后点击「开始消除」');
+  });
+
+  document.getElementById('watermarkRemoveRun')?.addEventListener('click', async () => {
+    try {
+      if (!workingImageData || !mask) return;
+      progress.show(deps.t('home.watermarkRemove.running') || '正在消除…');
+      const result = await inpaintImageData(workingImageData, mask, {
+        onProgress: (stage, percent) => {
+          let label = deps.t('home.watermarkRemove.running') || '正在消除…';
+          if (stage === 'model') {
+            label = deps.t('home.watermarkRemove.loadingModel') || '正在下载 AI 模型（首次）…';
+          } else if (stage === 'engine') {
+            label = deps.t('home.watermarkRemove.loadingEngine') || '正在加载处理引擎…';
+          }
+          progress.show(label, percent);
+        }
+      });
+      workingImageData = result;
+      sourceImageData = new ImageData(
+        new Uint8ClampedArray(result.data),
+        result.width,
+        result.height
+      );
+      mask.fill(0);
+      fitCanvasInStage(canvas);
+      redraw();
+      progress.idle(deps.t('home.watermarkRemove.done') || '消除完成，可继续涂抹或保存');
+    } catch (error) {
+      progress.idle(deps.t('home.watermarkRemove.hint') || '涂抹水印区域后点击「开始消除」');
+      let msg = String(error?.message || error);
+      if (error instanceof WatermarkRemoveError) {
+        if (error.code === 'empty_mask') {
+          msg = deps.t('home.watermarkRemove.hint') || '请先涂抹水印区域';
+        } else if (error.code === 'model_download_failed') {
+          msg = deps.t('home.watermarkRemove.modelFailed') || 'AI 模型下载失败，请检查网络后重试';
+        } else if (error.code === 'engine_load_failed') {
+          msg = deps.t('home.watermarkRemove.engineFailed') || '处理引擎加载失败，请刷新后重试';
+        } else {
+          msg = error.message;
+        }
+      }
+      deps.toast(msg);
+    }
+  });
+
+  document.getElementById('watermarkRemoveSave')?.addEventListener('click', async () => {
+    try {
+      if (!workingImageData || !deps.isTauri || !canvas || !ctx) return;
+      ctx.putImageData(workingImageData, 0, 0);
+      const blob = await new Promise((resolve, reject) => {
+        canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('toBlob failed'))), 'image/png');
+      });
+      const buffer = new Uint8Array(await blob.arrayBuffer());
+      const { invoke } = await import('@tauri-apps/api/core');
+      const outputDir = await deps.getOutputDir('Images/Watermark Remove');
+      const outputPath = await invoke('write_unique_file_bytes', {
+        directory: outputDir,
+        fileName: 'hy-nowm.png',
+        bytes: Array.from(buffer)
+      });
+      deps.toast((deps.t('home.watermarkRemove.saved') || '已保存：') + outputPath);
+      close();
+    } catch (error) {
+      deps.toast(String(error?.message || error));
+    }
+  });
+
+  bindToolOpen('watermark-remove', open);
+}
+
 /**
  * @param {{
  *   t: Function,
@@ -700,4 +1023,6 @@ export function initHYExtraTools(deps) {
   initTextExtractTool(deps);
   initPdfWordTool(deps);
   initHeicTool(deps);
+  initImageMattingTool(deps);
+  initWatermarkRemoveTool(deps);
 }

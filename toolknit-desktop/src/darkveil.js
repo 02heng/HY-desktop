@@ -1,6 +1,7 @@
 import { Renderer, Program, Mesh, Triangle, Vec2 } from 'ogl';
 
-const BACKGROUND_DPR_MAX = 1.25;
+const BACKGROUND_DPR_MAX = 1;
+const BACKGROUND_FRAME_MS = 1000 / 30;
 
 const vertex = `
 attribute vec2 position;
@@ -125,6 +126,7 @@ export function initDarkVeil(container, options = {}) {
 
   const start = performance.now();
   let frame = 0;
+  let lastFrameAt = 0;
   let pageVisible = typeof document === 'undefined' || !document.hidden;
 
   const stopLoop = () => {
@@ -140,10 +142,15 @@ export function initDarkVeil(container, options = {}) {
     }
   };
 
-  const loop = () => {
+  const loop = (now) => {
     frame = 0;
     if (!pageVisible) return;
-    program.uniforms.uTime.value = ((performance.now() - start) / 1000) * speed;
+    if (now - lastFrameAt < BACKGROUND_FRAME_MS) {
+      startLoop();
+      return;
+    }
+    lastFrameAt = now;
+    program.uniforms.uTime.value = ((now - start) / 1000) * speed;
     program.uniforms.uHueShift.value = hueShift;
     program.uniforms.uNoise.value = noiseIntensity;
     program.uniforms.uScan.value = scanlineIntensity;

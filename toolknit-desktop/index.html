@@ -279,6 +279,7 @@
           <div class="help-nav-group">
             <div class="help-nav-group-title" data-i18n="help.group.aiTools">AI 工具</div>
             <div class="help-nav-item" data-help-section="ai-polish" data-i18n="help.nav.aiPolish">AI 文字润色</div>
+            <div class="help-nav-item" data-help-section="ai-lyrics" data-i18n="help.nav.aiLyrics">歌词创作</div>
             <div class="help-nav-item" data-help-section="ai-translate" data-i18n="help.nav.aiTranslate">AI 智能翻译</div>
             <div class="help-nav-item" data-help-section="ai-doc" data-i18n="help.nav.aiDoc">AI 文档生成</div>
             <div class="help-nav-item" data-help-section="ai-table" data-i18n="help.nav.aiTable">AI 表格生成</div>
@@ -2834,6 +2835,98 @@
     </div>
     <!-- ===== End AI Polish Tool Page ===== -->
 
+    <!-- ===== AI Lyrics Tool Page ===== -->
+    <div class="audio-convert-overlay ai-lyrics-overlay" id="aiLyricsOverlay">
+      <div class="plasma-bg" id="aiLyricsBg"></div>
+      <div class="audio-convert-header">
+        <button class="settings-back" id="aiLyricsBack" data-i18n-title="settings.back">
+          <div class="svg-wrapper-1"><div class="svg-wrapper"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" class="icon"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg></div></div>
+          <span data-i18n="settings.back">返回</span>
+        </button>
+      </div>
+      <div class="audio-convert-body" id="aiLyricsBody">
+        <div class="audio-convert-hero">
+          <div class="audio-convert-hero-top">
+            <div class="audio-convert-hero-label" data-i18n="home.aiLyrics.heroLabel">Lyrics</div>
+            <h1 class="audio-convert-hero-title" data-i18n="home.aiLyrics.title">歌词创作</h1>
+            <p class="audio-convert-hero-subtitle" data-i18n="home.aiLyrics.subtitle">按 MiniMax Music 格式生成歌词与风格提示词，微调后复制粘贴到官网即可出歌。</p>
+          </div>
+        </div>
+        <section class="ai-lyrics-library" id="aiLyricsLibrary">
+          <div class="ai-lyrics-library-head">
+            <span class="ai-lyrics-label" data-i18n="home.aiLyrics.libraryLabel">以往作品</span>
+            <button class="settings-btn" id="aiLyricsOpenLibraryBtn" type="button" data-i18n="home.aiLyrics.openLibrary">打开作品文件夹</button>
+          </div>
+          <p class="ai-lyrics-library-empty" id="aiLyricsLibraryEmpty" data-i18n="home.aiLyrics.libraryEmpty">还没有保存过作品。生成后点「保存到本地」，会按歌名建成文件夹。</p>
+          <div class="ai-lyrics-library-list" id="aiLyricsLibraryList"></div>
+        </section>
+        <div class="ai-lyrics-form">
+          <div class="ai-lyrics-field">
+            <span class="ai-lyrics-label" data-i18n="home.aiLyrics.typeLabel">创作类型</span>
+            <div class="audio-convert-format-options" id="aiLyricsTypeOptions">
+              <button class="audio-convert-format-option active" type="button" data-value="original" data-i18n="home.aiLyrics.typeOriginal">原创歌曲</button>
+              <button class="audio-convert-format-option" type="button" data-value="story" data-i18n="home.aiLyrics.typeStory">故事主题曲</button>
+              <button class="audio-convert-format-option" type="button" data-value="character" data-i18n="home.aiLyrics.typeCharacter">人物主题曲</button>
+              <button class="audio-convert-format-option" type="button" data-value="scene" data-i18n="home.aiLyrics.typeScene">场景主题曲</button>
+            </div>
+          </div>
+          <div class="ai-lyrics-field">
+            <span class="ai-lyrics-label" data-i18n="home.aiLyrics.genreGroupLabel">歌曲分类</span>
+            <div class="audio-convert-format-options ai-lyrics-genre-options" id="aiLyricsGenreGroupOptions"></div>
+          </div>
+          <div class="ai-lyrics-field">
+            <span class="ai-lyrics-label" data-i18n="home.aiLyrics.genreSubLabel">子分类</span>
+            <div class="audio-convert-format-options ai-lyrics-genre-options" id="aiLyricsGenreSubOptions"></div>
+          </div>
+          <div class="ai-lyrics-field">
+            <span class="ai-lyrics-label" data-i18n="home.aiLyrics.langLabel">歌词语言</span>
+            <div class="audio-convert-format-options" id="aiLyricsLangOptions">
+              <button class="audio-convert-format-option active" type="button" data-value="zh" data-i18n="home.aiLyrics.langZh">中文</button>
+              <button class="audio-convert-format-option" type="button" data-value="en" data-i18n="home.aiLyrics.langEn">英文</button>
+              <button class="audio-convert-format-option" type="button" data-value="mixed" data-i18n="home.aiLyrics.langMixed">中英混</button>
+            </div>
+          </div>
+          <label class="ai-lyrics-field">
+            <span class="ai-lyrics-label" data-i18n="home.aiLyrics.promptLabel">提示词</span>
+            <textarea id="aiLyricsPrompt" class="ai-lyrics-textarea" rows="4" data-i18n-placeholder="home.aiLyrics.promptPlaceholder" placeholder="例如：雨夜离开故乡的女主角，克制、不煽情…"></textarea>
+          </label>
+          <div class="ai-lyrics-source-row">
+            <button class="settings-btn" id="aiLyricsPickBtn" type="button" data-i18n="home.aiLyrics.upload">上传小说/文章</button>
+            <button class="settings-btn" id="aiLyricsClearSourceBtn" type="button" hidden data-i18n="home.aiLyrics.clearSource">移除文档</button>
+            <span class="ai-lyrics-source-meta" id="aiLyricsSourceMeta" hidden></span>
+          </div>
+          <button class="audio-convert-cta" id="aiLyricsGenerateBtn" type="button" data-i18n="home.aiLyrics.generate">生成歌词与风格</button>
+        </div>
+        <div class="ai-lyrics-result" id="aiLyricsResult" hidden>
+          <label class="ai-lyrics-field">
+            <span class="ai-lyrics-label" data-i18n="home.aiLyrics.titleLabel">歌名</span>
+            <input id="aiLyricsTitle" class="ai-lyrics-input" type="text" maxlength="80" />
+            <button class="settings-btn" id="aiLyricsCopyTitle" type="button" data-i18n="home.aiLyrics.copyTitle">复制歌名</button>
+          </label>
+          <label class="ai-lyrics-field">
+            <span class="ai-lyrics-label" data-i18n="home.aiLyrics.styleLabel">风格（贴到 MiniMax 风格框）</span>
+            <textarea id="aiLyricsStyle" class="ai-lyrics-textarea" rows="4"></textarea>
+            <button class="settings-btn" id="aiLyricsCopyStyle" type="button" data-i18n="home.aiLyrics.copyStyle">复制风格</button>
+          </label>
+          <label class="ai-lyrics-field">
+            <span class="ai-lyrics-label" data-i18n="home.aiLyrics.lyricsLabel">歌词（贴到 MiniMax 歌词框）</span>
+            <textarea id="aiLyricsLyrics" class="ai-lyrics-textarea ai-lyrics-textarea--lyrics" rows="14"></textarea>
+            <div class="ai-lyrics-result-actions">
+              <span class="ai-lyrics-meter" id="aiLyricsMeter"></span>
+              <button class="settings-btn" id="aiLyricsCopyLyrics" type="button" data-i18n="home.aiLyrics.copyLyrics">复制歌词</button>
+              <button class="settings-btn" id="aiLyricsCopyAll" type="button" data-i18n="home.aiLyrics.copyAll">复制全部</button>
+              <button class="settings-btn" id="aiLyricsSaveBtn" type="button" data-i18n="home.aiLyrics.saveLocal">保存到本地</button>
+            </div>
+          </label>
+        </div>
+      </div>
+    </div>
+    <div class="audio-convert-process-mask" id="aiLyricsMask">
+      <div class="tk-mascot-lg" aria-hidden="true"></div>
+      <div class="audio-convert-process-text" id="aiLyricsMaskText" data-i18n="home.aiLyrics.generating">正在创作歌词…</div>
+    </div>
+    <!-- ===== End AI Lyrics Tool Page ===== -->
+
     <!-- ===== AI Translate Tool Page ===== -->
     <div class="pdf-merge-overlay ai-polish-overlay" id="aiTranslateOverlay">
       <div class="plasma-bg" id="aiTranslateBg"></div>
@@ -3555,6 +3648,102 @@
       </div>
     </div>
 
+    <!-- HY: Screenshot -->
+    <div class="audio-convert-overlay" id="screenshotOverlay">
+      <div class="plasma-bg" id="screenshotBg"></div>
+      <div class="audio-convert-header">
+        <button class="settings-back" id="screenshotBack" data-i18n-title="settings.back">
+          <div class="svg-wrapper-1"><div class="svg-wrapper"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" class="icon"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg></div></div>
+          <span data-i18n="settings.back">返回</span>
+        </button>
+      </div>
+      <div class="audio-convert-body">
+        <div class="audio-convert-hero">
+          <div class="audio-convert-hero-top">
+            <div class="audio-convert-hero-label" data-i18n="home.screenshot.heroLabel">Screenshot</div>
+            <h1 class="audio-convert-hero-title" data-i18n="home.screenshot.title">屏幕截图</h1>
+            <p class="audio-convert-hero-subtitle" data-i18n="home.screenshot.subtitle">全局 Alt+A 框选截图；也可一键截取全屏。结果复制到剪贴板并保存到本地。</p>
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin:18px 0 10px;">
+          <button class="audio-convert-cta" id="screenshotRegionBtn" type="button" data-i18n="home.screenshot.regionBtn">开始框选</button>
+          <button class="audio-convert-cta" id="screenshotFullscreenBtn" type="button" data-i18n="home.screenshot.fullscreenBtn">截取全屏</button>
+        </div>
+        <p class="audio-convert-hero-subtitle" id="screenshotLastPath" style="opacity:.85;" data-i18n="home.screenshot.lastPathEmpty">尚未截图</p>
+      </div>
+    </div>
+
+    <!-- HY: Image Matting -->
+    <div class="audio-convert-overlay" id="imageMattingOverlay">
+      <div class="plasma-bg" id="imageMattingBg"></div>
+      <div class="audio-convert-header">
+        <button class="settings-back" id="imageMattingBack" data-i18n-title="settings.back">
+          <div class="svg-wrapper-1"><div class="svg-wrapper"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" class="icon"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg></div></div>
+          <span data-i18n="settings.back">返回</span>
+        </button>
+      </div>
+      <div class="audio-convert-body">
+        <div class="audio-convert-hero">
+          <div class="audio-convert-hero-top">
+            <div class="audio-convert-hero-label" data-i18n="home.imageMatting.heroLabel">Matting</div>
+            <h1 class="audio-convert-hero-title" data-i18n="home.imageMatting.title">图片抠图</h1>
+            <p class="audio-convert-hero-subtitle" data-i18n="home.imageMatting.subtitle">本地 AI 去除背景，输出透明 PNG。首次使用会下载模型文件。</p>
+          </div>
+        </div>
+        <button class="audio-convert-cta" id="imageMattingCta" type="button" data-i18n="home.imageMatting.cta">选择图片</button>
+        <div class="hy-image-progress" id="imageMattingProgress" aria-live="polite">
+          <div class="hy-image-progress-track"><div class="hy-image-progress-fill" id="imageMattingProgressFill"></div></div>
+          <div class="hy-image-progress-text" id="imageMattingStatus"></div>
+        </div>
+        <div id="imageMattingPreviewWrap" style="margin-top:16px;display:none;">
+          <div class="hy-image-stage hy-image-stage--checker">
+            <img id="imageMattingPreview" alt="matting preview" />
+          </div>
+          <div class="hy-image-actions">
+            <button class="audio-convert-process-btn visible" id="imageMattingSaveBtn" type="button" data-i18n="home.imageMatting.save">保存透明 PNG</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- HY: Watermark Remove -->
+    <div class="audio-convert-overlay" id="watermarkRemoveOverlay">
+      <div class="plasma-bg" id="watermarkRemoveBg"></div>
+      <div class="audio-convert-header">
+        <button class="settings-back" id="watermarkRemoveBack" data-i18n-title="settings.back">
+          <div class="svg-wrapper-1"><div class="svg-wrapper"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" class="icon"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg></div></div>
+          <span data-i18n="settings.back">返回</span>
+        </button>
+      </div>
+      <div class="audio-convert-body">
+        <div class="audio-convert-hero">
+          <div class="audio-convert-hero-top">
+            <div class="audio-convert-hero-label" data-i18n="home.watermarkRemove.heroLabel">Erase</div>
+            <h1 class="audio-convert-hero-title" data-i18n="home.watermarkRemove.title">去水印</h1>
+            <p class="audio-convert-hero-subtitle" data-i18n="home.watermarkRemove.subtitle">用画笔涂抹水印区域，本地 MI-GAN 智能消除。首次使用会下载约 30MB 模型。</p>
+          </div>
+        </div>
+        <button class="audio-convert-cta" id="watermarkRemoveCta" type="button" data-i18n="home.watermarkRemove.cta">选择图片</button>
+        <div id="watermarkRemoveEditor" style="display:none;margin-top:14px;">
+          <div class="hy-image-toolbar">
+            <label data-i18n="home.watermarkRemove.brushSize">画笔
+              <input id="watermarkRemoveBrush" type="range" min="6" max="80" value="28" />
+            </label>
+            <button class="settings-btn" id="watermarkRemoveClearMask" type="button" data-i18n="home.watermarkRemove.clearMask">清除涂抹</button>
+            <button class="settings-btn" id="watermarkRemoveRun" type="button" data-i18n="home.watermarkRemove.run">开始消除</button>
+            <button class="settings-btn" id="watermarkRemoveSave" type="button" data-i18n="home.watermarkRemove.save">保存结果</button>
+          </div>
+          <div class="hy-image-progress" id="watermarkRemoveProgress" aria-live="polite">
+            <div class="hy-image-progress-track"><div class="hy-image-progress-fill" id="watermarkRemoveProgressFill"></div></div>
+            <div class="hy-image-progress-text" id="watermarkRemoveStatus"></div>
+          </div>
+          <div class="hy-image-stage">
+            <canvas id="watermarkRemoveCanvas"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- HY: Video Compress -->
     <div class="audio-convert-overlay" id="videoCompressOverlay">
       <div class="plasma-bg" id="videoCompressBg"></div>
@@ -3690,13 +3879,29 @@
           <!-- Settings panel -->
           <div class="typing-test-settings" id="typingTestSettings">
             <div class="typing-test-setting-group">
+              <label class="typing-test-setting-label" data-i18n="home.typingTest.source">练习来源</label>
+              <div class="typing-test-options" id="typingTestSourceOptions">
+                <button class="typing-test-option active" data-value="builtin" type="button" data-i18n="home.typingTest.sourceBuiltin">内置词库</button>
+                <button class="typing-test-option" data-value="custom" type="button" data-i18n="home.typingTest.sourceCustom">我的文章</button>
+              </div>
+            </div>
+            <div class="typing-test-setting-group" id="typingTestCustomGroup" style="display:none;">
+              <label class="typing-test-setting-label" data-i18n="home.typingTest.customArticle">自定义文章</label>
+              <div class="typing-test-custom-row">
+                <input type="file" id="typingTestFileInput" accept=".txt,text/plain" hidden>
+                <button class="typing-test-upload-btn" id="typingTestUploadBtn" type="button" data-i18n="home.typingTest.uploadTxt">上传 TXT</button>
+                <button class="typing-test-clear-btn" id="typingTestClearBtn" type="button" data-i18n="home.typingTest.clearArticle" style="display:none;">清除</button>
+              </div>
+              <div class="typing-test-custom-meta" id="typingTestCustomMeta" data-i18n="home.typingTest.noArticle">尚未上传文章</div>
+            </div>
+            <div class="typing-test-setting-group" id="typingTestLangGroup">
               <label class="typing-test-setting-label" data-i18n="home.typingTest.language">语言</label>
               <div class="typing-test-options" id="typingTestLangOptions">
                 <button class="typing-test-option" data-value="en" data-i18n="home.typingTest.english">英文</button>
                 <button class="typing-test-option active" data-value="zh" data-i18n="home.typingTest.chinese">中文</button>
               </div>
             </div>
-            <div class="typing-test-setting-group">
+            <div class="typing-test-setting-group" id="typingTestDifficultyGroup">
               <label class="typing-test-setting-label" data-i18n="home.typingTest.difficulty">难度</label>
               <div class="typing-test-options" id="typingTestDifficultyOptions">
                 <button class="typing-test-option active" data-value="easy" data-i18n="home.typingTest.easy">简单</button>
@@ -5011,6 +5216,48 @@
                     <div class="audio-list-meta" data-i18n="home.toolNames.imageTransformMeta">批量处理 / 本地输出</div>
                   </div>
                 </div>
+                <div class="audio-list-item" data-tool="screenshot" role="button" tabindex="0" data-i18n-aria-label="home.toolNames.screenshot">
+                  <div class="audio-list-icon"><i data-lucide="camera"></i></div>
+                  <div class="audio-list-info">
+                    <div class="audio-list-title" data-i18n="home.toolNames.screenshot">屏幕截图</div>
+                    <div class="audio-list-desc" data-i18n="home.toolNames.screenshotDesc">框选 / 全屏 · Alt+A</div>
+                  </div>
+                  <div class="audio-list-right">
+                    <div class="audio-list-tags">
+                      <span class="audio-tag" data-i18n="home.toolNames.imageCategoryTag">图像工具</span>
+                      <span class="tool-badge badge-new" data-i18n="home.toolNames.badgeNew">新</span>
+                    </div>
+                    <div class="audio-list-meta" data-i18n="home.toolNames.screenshotMeta">剪贴板 + 自动保存</div>
+                  </div>
+                </div>
+                <div class="audio-list-item" data-tool="image-matting" role="button" tabindex="0" data-i18n-aria-label="home.toolNames.imageMatting">
+                  <div class="audio-list-icon"><i data-lucide="scissors"></i></div>
+                  <div class="audio-list-info">
+                    <div class="audio-list-title" data-i18n="home.toolNames.imageMatting">图片抠图</div>
+                    <div class="audio-list-desc" data-i18n="home.toolNames.imageMattingDesc">AI 去背景 · 透明 PNG</div>
+                  </div>
+                  <div class="audio-list-right">
+                    <div class="audio-list-tags">
+                      <span class="audio-tag" data-i18n="home.toolNames.imageCategoryTag">图像工具</span>
+                      <span class="tool-badge badge-new" data-i18n="home.toolNames.badgeNew">新</span>
+                    </div>
+                    <div class="audio-list-meta" data-i18n="home.toolNames.imageMattingMeta">本地推理 / 首次下载模型</div>
+                  </div>
+                </div>
+                <div class="audio-list-item" data-tool="watermark-remove" role="button" tabindex="0" data-i18n-aria-label="home.toolNames.watermarkRemove">
+                  <div class="audio-list-icon"><i data-lucide="eraser"></i></div>
+                  <div class="audio-list-info">
+                    <div class="audio-list-title" data-i18n="home.toolNames.watermarkRemove">去水印</div>
+                    <div class="audio-list-desc" data-i18n="home.toolNames.watermarkRemoveDesc">涂抹水印区域后消除</div>
+                  </div>
+                  <div class="audio-list-right">
+                    <div class="audio-list-tags">
+                      <span class="audio-tag" data-i18n="home.toolNames.imageCategoryTag">图像工具</span>
+                      <span class="tool-badge badge-new" data-i18n="home.toolNames.badgeNew">新</span>
+                    </div>
+                    <div class="audio-list-meta" data-i18n="home.toolNames.watermarkRemoveMeta">画笔选区 / MI-GAN 本地消除</div>
+                  </div>
+                </div>
                 <div class="audio-list-item" data-tool="heic-convert" role="button" tabindex="0">
                   <div class="audio-list-icon"><i data-lucide="image"></i></div>
                   <div class="audio-list-info">
@@ -5401,14 +5648,14 @@
                   <div class="audio-list-icon"><i data-lucide="keyboard"></i></div>
                   <div class="audio-list-info">
                     <div class="audio-list-title" data-i18n="home.toolNames.typingTest">打字测试器</div>
-                    <div class="audio-list-desc" data-i18n="home.toolNames.typingTestDesc">中英文双语词库，多档难度，实时打字速度测试</div>
+                    <div class="audio-list-desc" data-i18n="home.toolNames.typingTestDesc">内置词库或上传 TXT 文章，中英练习，实时测速</div>
                   </div>
                   <div class="audio-list-right">
                     <div class="audio-list-tags">
                       <span class="audio-tag" data-i18n="home.toolNames.creativeCategoryTag">创意工具</span>
                       <span class="tool-badge badge-new" data-i18n="home.toolNames.badgeNew">新</span>
                     </div>
-                    <div class="audio-list-meta" data-i18n="home.toolNames.typingTestMeta">中英文词库 / 难度分级 / 音效反馈</div>
+                    <div class="audio-list-meta" data-i18n="home.toolNames.typingTestMeta">自定义文章 / 难度分级 / 音效反馈</div>
                   </div>
                 </div>
               </div>
@@ -5453,7 +5700,7 @@
               <div class="tools-hero-text">
                 <span class="tools-eyebrow" data-i18n="home.toolNames.aiEyebrow">AI Forge</span>
                 <h2 data-i18n="nav.aiTools">AI工具</h2>
-                <p data-i18n="home.aiCategoryDesc">AI 润色、翻译、可编辑 PDF 文档和可编辑数据表。</p>
+                <p data-i18n="home.aiCategoryDesc">AI 润色、歌词创作、翻译、可编辑 PDF 文档和可编辑数据表。</p>
               </div>
               <div class="audio-search tools-search">
                 <input type="text" class="tools-search-input" data-i18n-placeholder="home.searchPlaceholder" placeholder="搜索工具...">
@@ -5475,6 +5722,20 @@
                       <span class="tool-badge badge-new" data-i18n="home.toolNames.badgeNew">新</span>
                     </div>
                     <div class="audio-list-meta" data-i18n="home.toolNames.aiPolishMeta">智能分析 / 多方向润色 / 对比预览</div>
+                  </div>
+                </div>
+                <div class="audio-list-item" data-tool="ai-lyrics" role="button" tabindex="0" data-i18n-aria-label="home.toolNames.aiLyrics">
+                  <div class="audio-list-icon"><i data-lucide="music-2"></i></div>
+                  <div class="audio-list-info">
+                    <div class="audio-list-title" data-i18n="home.toolNames.aiLyrics">歌词创作</div>
+                    <div class="audio-list-desc" data-i18n="home.toolNames.aiLyricsDesc">生成 MiniMax 可用的歌词与风格</div>
+                  </div>
+                  <div class="audio-list-right">
+                    <div class="audio-list-tags">
+                      <span class="audio-tag" data-i18n="home.toolNames.aiCategoryTag">AI工具</span>
+                      <span class="tool-badge badge-new" data-i18n="home.toolNames.badgeNew">新</span>
+                    </div>
+                    <div class="audio-list-meta" data-i18n="home.toolNames.aiLyricsMeta">DeepSeek Flash / 结构标签 / 一键复制</div>
                   </div>
                 </div>
                 <div class="audio-list-item" data-tool="ai-translate" role="button" tabindex="0" data-i18n-aria-label="home.toolNames.aiTranslate">
@@ -5643,7 +5904,6 @@
       </div>
     </div>
 
-    <script type="module" src="./src/help-data.js"></script>
     <script type="module" src="./src/main.js"></script>
 
     <div class="audio-convert-process-mask" id="audioConvertProcessMask">
@@ -5948,5 +6208,28 @@
       </section>
     </div>
     <div class="toast" id="favToast"><span id="favToastText"></span></div>
+
+    <!-- In-app region screenshot (no second WebView) -->
+    <div id="regionScreenshotOverlay" class="region-screenshot-overlay" aria-hidden="true" hidden>
+      <div class="region-screenshot-stage" id="regionScreenshotStage">
+        <div class="region-screenshot-mask" id="regionScreenshotMask"></div>
+        <div class="region-screenshot-selection" id="regionScreenshotSelection">
+          <canvas class="region-screenshot-annotate" id="regionScreenshotAnnotate"></canvas>
+        </div>
+        <div class="region-screenshot-size" id="regionScreenshotSize">0 × 0</div>
+      </div>
+      <div class="region-screenshot-toolbar" id="regionScreenshotToolbar" hidden>
+        <button type="button" class="region-shot-tool active" data-tool="pen" title="画笔">✎</button>
+        <button type="button" class="region-shot-tool" data-tool="rect" title="矩形">▭</button>
+        <button type="button" class="region-shot-tool" data-tool="arrow" title="箭头">➤</button>
+        <button type="button" class="region-shot-tool" data-tool="mosaic" title="马赛克">▦</button>
+        <span class="region-shot-sep"></span>
+        <button type="button" class="region-shot-btn" id="regionShotUndo" title="撤销">↩</button>
+        <button type="button" class="region-shot-btn" id="regionShotReselect" title="重选">↻</button>
+        <button type="button" class="region-shot-btn danger" id="regionShotCancel" title="取消">✕</button>
+        <button type="button" class="region-shot-btn primary" id="regionShotConfirm" title="确认">✓</button>
+      </div>
+      <div class="region-screenshot-hint" id="regionScreenshotHint">拖拽选择截图区域</div>
+    </div>
   </body>
 </html>

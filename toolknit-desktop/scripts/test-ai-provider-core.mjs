@@ -49,6 +49,87 @@ const content = await requestAiCompletion({
 assert.equal(content, 'World');
 assert.equal(sentBody.max_tokens, 100);
 assert.equal(sentBody.stream, false);
+assert.equal(sentBody.thinking, undefined);
+
+let thinkingBody = null;
+await requestAiCompletion({
+  ...request,
+  thinking: 'disabled',
+  fetchImpl: async (_url, options) => {
+    thinkingBody = JSON.parse(options.body);
+    return {
+      ok: true,
+      headers: { get: () => null },
+      text: async () => JSON.stringify({ choices: [{ message: { content: 'ok' } }] })
+    };
+  }
+});
+assert.deepEqual(thinkingBody.thinking, { type: 'disabled' });
+
+let enabledBody = null;
+await requestAiCompletion({
+  ...request,
+  maxTokens: 300000,
+  thinking: 'enabled',
+  fetchImpl: async (_url, options) => {
+    enabledBody = JSON.parse(options.body);
+    return {
+      ok: true,
+      headers: { get: () => null },
+      text: async () => JSON.stringify({ choices: [{ message: { content: 'ok' } }] })
+    };
+  }
+});
+assert.deepEqual(enabledBody.thinking, { type: 'enabled' });
+assert.equal(enabledBody.max_tokens, 300000);
+assert.equal(AI_PROVIDER_LIMITS.maxTokens, 300000);
+
+let penaltyBody = null;
+await requestAiCompletion({
+  ...request,
+  frequencyPenalty: 0.5,
+  fetchImpl: async (_url, options) => {
+    penaltyBody = JSON.parse(options.body);
+    return {
+      ok: true,
+      headers: { get: () => null },
+      text: async () => JSON.stringify({ choices: [{ message: { content: 'ok' } }] })
+    };
+  }
+});
+assert.equal(penaltyBody.frequency_penalty, 0.5);
+
+await assert.rejects(
+  requestAiCompletion({
+    ...request,
+    fetchImpl: async () => ({
+      ok: true,
+      headers: { get: () => null },
+      text: async () => JSON.stringify({
+        choices: [{ finish_reason: 'length', message: { content: '', reasoning_content: 'thinking...' } }]
+      })
+    })
+  }),
+  (error) => error instanceof AiProviderError && error.code === 'empty_content'
+);
+
+const recovered = await requestAiCompletion({
+  ...request,
+  fetchImpl: async () => ({
+    ok: true,
+    headers: { get: () => null },
+    text: async () => JSON.stringify({
+      choices: [{
+        finish_reason: 'length',
+        message: {
+          content: '',
+          reasoning_content: 'plan the song then output {"title":"雨夜","style":"A ballad","lyrics":"[Intro]\\n雨"}'
+        }
+      }]
+    })
+  })
+});
+assert.match(recovered, /雨夜/);
 
 let errorTextRead = false;
 await assert.rejects(

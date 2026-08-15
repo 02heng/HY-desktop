@@ -97,6 +97,7 @@ const toolToHelp = new Map([
   ['ai-translate', 'ai-translate'],
   ['ai-doc', 'ai-doc'],
   ['ai-table', 'ai-table'],
+  ['ai-lyrics', 'ai-lyrics'],
 ]);
 
 const desktopTools = unique(valuesForAttribute(indexHtml, 'data-tool'));

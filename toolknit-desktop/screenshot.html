@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HY Screenshot</title>
+    <style>
+      html, body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #000;
+        cursor: crosshair;
+        user-select: none;
+        font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+      }
+      #stage {
+        position: fixed;
+        inset: 0;
+        background-color: #111;
+        background-repeat: no-repeat;
+        background-position: 0 0;
+        background-size: 100% 100%;
+      }
+      #mask {
+        position: absolute;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.45);
+        pointer-events: none;
+      }
+      #selection {
+        position: absolute;
+        border: 2px solid #4f8cff;
+        box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
+        background: transparent;
+        display: none;
+        pointer-events: none;
+      }
+      #sizeTag {
+        position: absolute;
+        top: 12px;
+        left: 12px;
+        padding: 4px 8px;
+        border-radius: 6px;
+        background: rgba(15, 18, 28, 0.85);
+        color: #fff;
+        font-size: 12px;
+        letter-spacing: 0.02em;
+        display: none;
+        pointer-events: none;
+      }
+      #hint {
+        position: fixed;
+        left: 50%;
+        bottom: 28px;
+        transform: translateX(-50%);
+        padding: 8px 14px;
+        border-radius: 999px;
+        background: rgba(15, 18, 28, 0.82);
+        color: #e8eefc;
+        font-size: 13px;
+        pointer-events: none;
+        white-space: nowrap;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="stage">
+      <div id="mask"></div>
+      <div id="selection"></div>
+      <div id="sizeTag">0 × 0</div>
+    </div>
+    <div id="hint">拖拽框选 · Enter 确认 · Esc 取消</div>
+    <script type="module" src="/src/screenshot-overlay.js"></script>
+  </body>
+</html>

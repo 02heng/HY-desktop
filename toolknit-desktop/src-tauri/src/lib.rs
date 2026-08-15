@@ -1,5 +1,7 @@
-﻿use std::sync::OnceLock;
+use std::sync::OnceLock;
 use tauri::{Emitter, Manager};
+
+mod screenshot;
 
 static CUSTOM_BACKGROUND_SERVER_PORT: OnceLock<u16> = OnceLock::new();
 
@@ -107,7 +109,7 @@ fn output_root_config_path() -> Result<std::path::PathBuf, String> {
     Ok(toolknit_app_data_dir()?.join("output-location.json"))
 }
 
-fn configured_output_root() -> Option<std::path::PathBuf> {
+pub(crate) fn configured_output_root() -> Option<std::path::PathBuf> {
     let config_path = output_root_config_path().ok()?;
     let config = std::fs::read_to_string(config_path)
         .ok()
@@ -765,17 +767,84 @@ fn ffmpeg_runtime_path() -> Result<std::path::PathBuf, String> {
         "ffmpeg"
     }))
 }
-fn path_ffmpeg() -> Option<std::path::PathBuf> {
-    let name = if cfg!(target_os = "windows") {
+fn ffmpeg_exe_name() -> &'static str {
+    if cfg!(target_os = "windows") {
         "ffmpeg.exe"
     } else {
         "ffmpeg"
-    };
+    }
+}
+fn path_ffmpeg() -> Option<std::path::PathBuf> {
+    let name = ffmpeg_exe_name();
     std::env::var_os("PATH").and_then(|paths| {
         std::env::split_paths(&paths)
             .map(|dir| dir.join(name))
             .find(|candidate| candidate.is_file())
     })
+}
+
+/// Discover FFmpeg outside the managed AppData runtime:
+/// env overrides, common install roots (e.g. D:\ffmpeg), then PATH.
+fn discover_external_ffmpeg() -> Option<std::path::PathBuf> {
+    let exe_name = ffmpeg_exe_name();
+
+    for key in ["HY_FFMPEG", "FFMPEG_PATH", "FFMPEG_BINARY"] {
+        if let Ok(value) = std::env::var(key) {
+            let trimmed = value.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let path = std::path::PathBuf::from(trimmed);
+            if path.is_file() {
+                return Some(path);
+            }
+            let nested = path.join(exe_name);
+            if nested.is_file() {
+                return Some(nested);
+            }
+            let bin_nested = path.join("bin").join(exe_name);
+            if bin_nested.is_file() {
+                return Some(bin_nested);
+            }
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let roots = [
+            std::path::PathBuf::from(r"D:\ffmpeg"),
+            std::path::PathBuf::from(r"D:\FFmpeg"),
+            std::path::PathBuf::from(r"C:\ffmpeg"),
+            std::path::PathBuf::from(r"C:\FFmpeg"),
+        ];
+        for root in roots {
+            if !root.is_dir() {
+                continue;
+            }
+            let direct = root.join(exe_name);
+            if direct.is_file() {
+                return Some(direct);
+            }
+            let bin = root.join("bin").join(exe_name);
+            if bin.is_file() {
+                return Some(bin);
+            }
+            if let Ok(entries) = std::fs::read_dir(&root) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if !path.is_dir() {
+                        continue;
+                    }
+                    let candidate = path.join("bin").join(exe_name);
+                    if candidate.is_file() {
+                        return Some(candidate);
+                    }
+                }
+            }
+        }
+    }
+
+    path_ffmpeg()
 }
 
 fn get_ffmpeg_path() -> Result<std::path::PathBuf, String> {
@@ -788,22 +857,17 @@ fn get_ffmpeg_path() -> Result<std::path::PathBuf, String> {
     // but never let a release build silently use it after the managed runtime is removed.
     #[cfg(debug_assertions)]
     {
-        let exe_name = if cfg!(target_os = "windows") {
-            "ffmpeg.exe"
-        } else {
-            "ffmpeg"
-        };
         let source_resource = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("resources")
             .join("ffmpeg")
-            .join(exe_name);
+            .join(ffmpeg_exe_name());
         if source_resource.is_file() {
             return Ok(source_resource);
         }
     }
 
-    if let Some(system) = path_ffmpeg() {
-        return Ok(system);
+    if let Some(external) = discover_external_ffmpeg() {
+        return Ok(external);
     }
     Err("ffmpeg not installed. Open Settings > FFmpeg Runtime to download it.".to_string())
 }
@@ -844,17 +908,34 @@ fn begin_ffmpeg_download() -> Result<FfmpegDownloadGuard, String> {
 
 #[tauri::command]
 fn get_ffmpeg_runtime_status() -> Result<FfmpegRuntimeStatus, String> {
-    let path = ffmpeg_runtime_path()?;
-    let installed = path.is_file();
+    let managed = ffmpeg_runtime_path()?;
+    if managed.is_file() {
+        return Ok(FfmpegRuntimeStatus {
+            installed: true,
+            path: Some(cleanup_display_path(&managed)),
+            bytes: std::fs::metadata(&managed)
+                .map(|meta| meta.len())
+                .unwrap_or(0),
+            source: Some("managed".to_string()),
+        });
+    }
+
+    if let Some(external) = discover_external_ffmpeg() {
+        return Ok(FfmpegRuntimeStatus {
+            installed: true,
+            path: Some(cleanup_display_path(&external)),
+            bytes: std::fs::metadata(&external)
+                .map(|meta| meta.len())
+                .unwrap_or(0),
+            source: Some("external".to_string()),
+        });
+    }
+
     Ok(FfmpegRuntimeStatus {
-        installed,
-        path: installed.then(|| cleanup_display_path(&path)),
-        bytes: if installed {
-            std::fs::metadata(&path).map(|meta| meta.len()).unwrap_or(0)
-        } else {
-            0
-        },
-        source: installed.then(|| "managed".to_string()),
+        installed: false,
+        path: None,
+        bytes: 0,
+        source: None,
     })
 }
 
@@ -9143,6 +9224,256 @@ fn write_file_bytes(path: String, bytes: Vec<u8>) -> Result<(), String> {
     fs::write(path, bytes).map_err(|e| format!("Failed to write file: {}", e))
 }
 
+const LYRICS_PROJECT_MAX_FILE_BYTES: usize = 1024 * 1024;
+
+fn lyrics_folder_stem(requested_path: &std::path::Path) -> Result<String, String> {
+    let file_name = requested_path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("");
+    let path_for_ext = std::path::Path::new(file_name);
+    let stem_raw = match path_for_ext
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("md" | "txt" | "markdown") => path_for_ext
+            .file_stem()
+            .and_then(|value| value.to_str())
+            .unwrap_or(file_name),
+        _ => file_name,
+    };
+    let mut cleaned: String = stem_raw
+        .trim()
+        .chars()
+        .map(|character| {
+            if matches!(
+                character,
+                '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '\0'
+            ) || character.is_control()
+            {
+                '_'
+            } else {
+                character
+            }
+        })
+        .collect();
+    while cleaned.ends_with('.') || cleaned.ends_with(' ') {
+        cleaned.pop();
+    }
+    let clipped: String = cleaned.chars().take(96).collect();
+    if clipped.is_empty() {
+        Ok("untitled-lyrics".to_string())
+    } else {
+        Ok(clipped)
+    }
+}
+
+fn create_unique_lyrics_directory(
+    parent: &std::path::Path,
+    stem: &str,
+) -> Result<std::path::PathBuf, String> {
+    std::fs::create_dir_all(parent)
+        .map_err(|error| format!("Failed to create directory: {error}"))?;
+    for counter in 0..10_000_u32 {
+        let name = if counter == 0 {
+            stem.to_string()
+        } else {
+            format!("{}_{}", stem, counter + 1)
+        };
+        let candidate = parent.join(name);
+        match std::fs::create_dir(&candidate) {
+            Ok(()) => return Ok(candidate),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(format!("Failed to create lyrics folder: {error}")),
+        }
+    }
+    Err("Unable to reserve a unique lyrics folder".to_string())
+}
+
+fn write_lyrics_project_contents(
+    directory: &std::path::Path,
+    readme: &str,
+    style: &str,
+    lyrics: &str,
+) -> Result<(), String> {
+    let files = [
+        ("README.md", readme),
+        ("style.txt", style),
+        ("lyrics.txt", lyrics),
+    ];
+    for (name, content) in files {
+        std::fs::write(directory.join(name), content.as_bytes())
+            .map_err(|error| format!("Failed to write {name}: {error}"))?;
+    }
+    Ok(())
+}
+
+fn commit_lyrics_project_dir(
+    directory: std::path::PathBuf,
+    readme: String,
+    style: String,
+    lyrics: String,
+) -> Result<String, String> {
+    if let Err(error) = write_lyrics_project_contents(&directory, &readme, &style, &lyrics) {
+        let _ = std::fs::remove_dir_all(&directory);
+        return Err(error);
+    }
+    Ok(directory.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
+fn save_lyrics_project(
+    requested_path: String,
+    readme: String,
+    style: String,
+    lyrics: String,
+) -> Result<String, String> {
+    if requested_path.contains('\0')
+        || readme.len() > LYRICS_PROJECT_MAX_FILE_BYTES
+        || style.len() > LYRICS_PROJECT_MAX_FILE_BYTES
+        || lyrics.len() > LYRICS_PROJECT_MAX_FILE_BYTES
+    {
+        return Err("Invalid lyrics project".to_string());
+    }
+    let requested = std::path::PathBuf::from(&requested_path);
+    let parent = requested
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .ok_or_else(|| "Invalid lyrics folder".to_string())?;
+    is_path_safe(parent)?;
+    let stem = lyrics_folder_stem(&requested)?;
+    let directory = create_unique_lyrics_directory(parent, &stem)?;
+    commit_lyrics_project_dir(directory, readme, style, lyrics)
+}
+
+#[derive(serde::Serialize)]
+struct LyricsProjectSummary {
+    path: String,
+    name: String,
+    title: String,
+    modified_at: Option<i64>,
+}
+
+#[derive(serde::Serialize)]
+struct LyricsProjectFiles {
+    path: String,
+    title: String,
+    style: String,
+    lyrics: String,
+    readme: String,
+}
+
+fn lyrics_title_from_readme(readme: &str, fallback: &str) -> String {
+    for line in readme.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix('#') {
+            let heading = rest.trim_start_matches('#').trim();
+            if !heading.is_empty() {
+                return heading.to_string();
+            }
+        }
+    }
+    if fallback.trim().is_empty() {
+        "untitled-lyrics".to_string()
+    } else {
+        fallback.to_string()
+    }
+}
+
+fn read_lyrics_utf8_file(path: &std::path::Path) -> String {
+    match std::fs::read(path) {
+        Ok(bytes) if bytes.len() <= LYRICS_PROJECT_MAX_FILE_BYTES => {
+            String::from_utf8_lossy(&bytes).into_owned()
+        }
+        Ok(bytes) => String::from_utf8_lossy(&bytes[..LYRICS_PROJECT_MAX_FILE_BYTES]).into_owned(),
+        Err(_) => String::new(),
+    }
+}
+
+fn lyrics_project_dir_is_valid(directory: &std::path::Path) -> bool {
+    directory.join("lyrics.txt").is_file()
+        || directory.join("style.txt").is_file()
+        || directory.join("README.md").is_file()
+}
+
+fn file_modified_millis(path: &std::path::Path) -> Option<i64> {
+    std::fs::metadata(path)
+        .ok()
+        .and_then(|metadata| metadata.modified().ok())
+        .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+        .and_then(|duration| i64::try_from(duration.as_millis()).ok())
+}
+
+#[tauri::command]
+fn list_lyrics_projects(library_root: String) -> Result<Vec<LyricsProjectSummary>, String> {
+    if library_root.contains('\0') {
+        return Err("Invalid lyrics library".to_string());
+    }
+    let root = std::path::PathBuf::from(&library_root);
+    if !root.exists() {
+        return Ok(Vec::new());
+    }
+    is_path_safe(&root)?;
+    if !root.is_dir() {
+        return Err("Lyrics library is not a folder".to_string());
+    }
+    let mut items = Vec::new();
+    let entries = std::fs::read_dir(&root)
+        .map_err(|error| format!("Failed to read lyrics library: {error}"))?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let name = path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or("")
+            .to_string();
+        if name.is_empty() || name.starts_with('.') {
+            continue;
+        }
+        if !lyrics_project_dir_is_valid(&path) {
+            continue;
+        }
+        let readme = read_lyrics_utf8_file(&path.join("README.md"));
+        items.push(LyricsProjectSummary {
+            path: cleanup_display_path(&path),
+            title: lyrics_title_from_readme(&readme, &name),
+            name,
+            modified_at: file_modified_millis(&path),
+        });
+    }
+    items.sort_by(|left, right| right.modified_at.cmp(&left.modified_at));
+    Ok(items)
+}
+
+#[tauri::command]
+fn read_lyrics_project(directory: String) -> Result<LyricsProjectFiles, String> {
+    if directory.contains('\0') {
+        return Err("Invalid lyrics folder".to_string());
+    }
+    let dir = std::path::PathBuf::from(&directory);
+    is_path_safe(&dir)?;
+    if !dir.is_dir() {
+        return Err("Lyrics folder not found".to_string());
+    }
+    let name = dir
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("untitled-lyrics");
+    let readme = read_lyrics_utf8_file(&dir.join("README.md"));
+    Ok(LyricsProjectFiles {
+        path: cleanup_display_path(&dir),
+        title: lyrics_title_from_readme(&readme, name),
+        style: read_lyrics_utf8_file(&dir.join("style.txt")),
+        lyrics: read_lyrics_utf8_file(&dir.join("lyrics.txt")),
+        readme,
+    })
+}
+
 #[tauri::command]
 fn write_unique_file_bytes(
     directory: String,
@@ -9408,6 +9739,174 @@ mod paired_file_write_tests {
         );
         assert!(duplicate.is_err());
         std::fs::remove_dir_all(&directory).expect("remove test directory");
+    }
+}
+
+#[cfg(test)]
+mod lyrics_project_save_tests {
+    use super::*;
+
+    fn test_directory() -> std::path::PathBuf {
+        let suffix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock must be after epoch")
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!("toolknit-lyrics-output-{}", suffix));
+        std::fs::create_dir_all(&directory).expect("create test directory");
+        directory
+    }
+
+    #[test]
+    fn lyrics_folder_stem_strips_supported_markdown_extensions() {
+        assert_eq!(
+            lyrics_folder_stem(std::path::Path::new("song.md")).unwrap(),
+            "song"
+        );
+        assert_eq!(
+            lyrics_folder_stem(std::path::Path::new("song.MD")).unwrap(),
+            "song"
+        );
+        assert_eq!(
+            lyrics_folder_stem(std::path::Path::new("song.markdown")).unwrap(),
+            "song"
+        );
+    }
+
+    #[test]
+    fn lyrics_folder_stem_sanitizes_illegal_and_empty_names() {
+        assert_eq!(
+            lyrics_folder_stem(std::path::Path::new("bad*song?|.md")).unwrap(),
+            "bad_song__"
+        );
+        assert_eq!(
+            lyrics_folder_stem(std::path::Path::new("..")).unwrap(),
+            "untitled-lyrics"
+        );
+        assert_eq!(
+            lyrics_folder_stem(std::path::Path::new("")).unwrap(),
+            "untitled-lyrics"
+        );
+    }
+
+    #[test]
+    fn lyrics_folder_stem_clips_to_ninety_six_characters() {
+        let long_name = format!("{}.md", "n".repeat(120));
+        let stem = lyrics_folder_stem(std::path::Path::new(&long_name)).unwrap();
+        assert_eq!(stem.len(), 96);
+        assert_eq!(stem, "n".repeat(96));
+    }
+
+    #[test]
+    fn save_lyrics_project_writes_three_files() {
+        let parent = test_directory();
+        let requested = parent.join("雨夜离开");
+        let saved = save_lyrics_project(
+            requested.to_string_lossy().into_owned(),
+            "# 雨夜离开\n".to_string(),
+            "A ballad\n".to_string(),
+            "[Verse]\n雨还在下\n".to_string(),
+        )
+        .expect("save lyrics project");
+        let dir = std::path::PathBuf::from(&saved);
+        assert_eq!(dir.file_name().unwrap(), "雨夜离开");
+        assert_eq!(
+            std::fs::read_to_string(dir.join("README.md")).unwrap(),
+            "# 雨夜离开\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.join("style.txt")).unwrap(),
+            "A ballad\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.join("lyrics.txt")).unwrap(),
+            "[Verse]\n雨还在下\n"
+        );
+        std::fs::remove_dir_all(&parent).expect("cleanup");
+    }
+
+    #[test]
+    fn save_lyrics_project_uses_underscore_two_when_name_exists() {
+        let parent = test_directory();
+        let first_path = parent.join("雨夜离开");
+        std::fs::create_dir_all(&first_path).expect("occupy first name");
+        let saved = save_lyrics_project(
+            first_path.to_string_lossy().into_owned(),
+            "readme".to_string(),
+            "style".to_string(),
+            "lyrics".to_string(),
+        )
+        .expect("save unique lyrics project");
+        let dir = std::path::PathBuf::from(&saved);
+        assert_eq!(dir.file_name().unwrap(), "雨夜离开_2");
+        assert!(dir.join("lyrics.txt").is_file());
+        assert!(!first_path.join("lyrics.txt").exists());
+        std::fs::remove_dir_all(&parent).expect("cleanup");
+    }
+
+    #[test]
+    fn commit_lyrics_project_dir_removes_dir_when_second_file_write_is_blocked() {
+        let parent = test_directory();
+        let unique = create_unique_lyrics_directory(&parent, "blocked-song").expect("unique dir");
+        std::fs::create_dir(unique.join("style.txt")).expect("block style write");
+        let error = commit_lyrics_project_dir(
+            unique.clone(),
+            "readme".to_string(),
+            "style".to_string(),
+            "lyrics".to_string(),
+        )
+        .expect_err("style.txt directory must block the second file write");
+        assert!(error.contains("style.txt"));
+        assert!(!unique.exists());
+        std::fs::remove_dir_all(&parent).expect("cleanup");
+    }
+
+    #[test]
+    fn save_lyrics_project_rejects_oversized_payload() {
+        let parent = test_directory();
+        let requested = parent.join("huge");
+        let huge = "x".repeat(1024 * 1024 + 1);
+        let result = save_lyrics_project(
+            requested.to_string_lossy().into_owned(),
+            huge,
+            "s".to_string(),
+            "l".to_string(),
+        );
+        assert!(result.is_err());
+        assert!(!requested.exists());
+        std::fs::remove_dir_all(&parent).expect("cleanup");
+    }
+
+    #[test]
+    fn list_lyrics_projects_returns_saved_folder() {
+        let parent = test_directory();
+        let library = parent.join("Lyrics");
+        std::fs::create_dir_all(&library).expect("create library");
+        let saved = save_lyrics_project(
+            library.join("雨夜离开").to_string_lossy().into_owned(),
+            "# 雨夜离开\n".to_string(),
+            "A ballad\n".to_string(),
+            "[Verse]\n雨还在下\n".to_string(),
+        )
+        .expect("save lyrics project");
+        let listed = list_lyrics_projects(library.to_string_lossy().into_owned()).expect("list");
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].title, "雨夜离开");
+        assert_eq!(listed[0].name, "雨夜离开");
+        assert!(listed[0].path.contains("雨夜离开"));
+        let loaded = read_lyrics_project(saved).expect("read");
+        assert_eq!(loaded.title, "雨夜离开");
+        assert_eq!(loaded.style, "A ballad\n");
+        assert!(loaded.lyrics.contains("[Verse]"));
+        std::fs::remove_dir_all(&parent).expect("cleanup");
+    }
+
+    #[test]
+    fn list_lyrics_projects_empty_when_folder_missing() {
+        let parent = test_directory();
+        let missing = parent.join("missing-lyrics");
+        let listed = list_lyrics_projects(missing.to_string_lossy().into_owned()).expect("empty");
+        assert!(listed.is_empty());
+        std::fs::remove_dir_all(&parent).expect("cleanup");
     }
 }
 
@@ -11336,8 +11835,16 @@ fn open_recycle_bin() -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(screenshot::ScreenshotState::default())
         .invoke_handler(tauri::generate_handler![
             open_url,
+            screenshot::start_region_screenshot,
+            screenshot::start_fullscreen_screenshot,
+            screenshot::get_screenshot_preview_path,
+            screenshot::confirm_screenshot_region,
+            screenshot::cancel_screenshot,
+            screenshot::complete_screenshot_png,
+            screenshot::export_pending_region_png_base64,
             get_documents_dir,
             get_download_dir,
             get_install_lang,
@@ -11365,6 +11872,9 @@ pub fn run() {
             prepare_icon_source_image,
             write_file_bytes,
             write_unique_file_bytes,
+            save_lyrics_project,
+            list_lyrics_projects,
+            read_lyrics_project,
             write_unique_file_pair,
             write_file_chunk,
             begin_icon_archive_write,
@@ -11423,8 +11933,11 @@ pub fn run() {
         }))
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                let _ = window.hide();
+                // Keep the main window alive in the tray; allow screenshot overlay to close.
+                if window.label() == "main" {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
             }
         })
         .setup(|app| {
@@ -11435,6 +11948,42 @@ pub fn run() {
                     .level(log::LevelFilter::Info)
                     .build(),
             )?;
+
+            #[cfg(desktop)]
+            {
+                use tauri_plugin_global_shortcut::{
+                    Code, Modifiers, Shortcut, ShortcutEvent, ShortcutState,
+                };
+                let screenshot_hotkey =
+                    |app: &tauri::AppHandle, shortcut: &Shortcut, event: ShortcutEvent| {
+                        if event.state == ShortcutState::Pressed
+                            && shortcut.matches(Modifiers::ALT, Code::KeyA)
+                        {
+                        let app = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            if let Err(error) =
+                                screenshot::start_region_screenshot(app.clone()).await
+                            {
+                                let _ = app.emit("screenshot-error", error);
+                            }
+                        });
+                    }
+                };
+                let shortcut_plugin = match tauri_plugin_global_shortcut::Builder::new()
+                    .with_shortcuts(["alt+a"])
+                {
+                    Ok(builder) => builder.with_handler(screenshot_hotkey).build(),
+                    Err(error) => {
+                        log::warn!("Alt+A screenshot hotkey unavailable: {error}");
+                        tauri_plugin_global_shortcut::Builder::new()
+                            .with_handler(screenshot_hotkey)
+                            .build()
+                    }
+                };
+                if let Err(error) = app.handle().plugin(shortcut_plugin) {
+                    log::warn!("global-shortcut plugin unavailable: {error}");
+                }
+            }
 
             // 系统托盘
             let lang = read_initial_lang();

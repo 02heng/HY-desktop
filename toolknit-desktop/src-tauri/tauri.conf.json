@@ -24,12 +24,12 @@
         "transparent": true,
         "shadow": false,
         "devtools": false,
-        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection",
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --disable-background-timer-throttling --disable-renderer-backgrounding --disable-backgrounding-occluded-windows",
         "dragDropEnabled": true
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' asset: blob: data: http://127.0.0.1:*; media-src 'self' asset: blob: data: http://127.0.0.1:*; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https: http://localhost:* http://127.0.0.1:*; font-src 'self' data:",
+      "csp": "default-src 'self'; img-src 'self' asset: blob: data: http://127.0.0.1:* https:; media-src 'self' asset: blob: data: http://127.0.0.1:*; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval' blob:; worker-src 'self' blob:; connect-src 'self' https: http://localhost:* http://127.0.0.1:*; font-src 'self' data:",
       "assetProtocol": {
         "enable": true,
         "scope": ["**"]

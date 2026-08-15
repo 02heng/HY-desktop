@@ -16,7 +16,7 @@ export const HELP_CONTENT_EN = {
         <div class="help-tool-card"><div class="help-tool-card-name">Creative Tools</div><div class="help-tool-card-desc">Color extraction, typing test</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">Cleanup Tools</div><div class="help-tool-card-desc">Large-file scanning, AI metadata suggestions, Recycle Bin cleanup</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">Hardware Tools</div><div class="help-tool-card-desc">Read-only system, CPU, memory, GPU, board, disk, network, and sensor info</div></div>
-        <div class="help-tool-card"><div class="help-tool-card-name">AI Tools</div><div class="help-tool-card-desc">AI polish, translate, editable documents, editable tables</div></div>
+        <div class="help-tool-card"><div class="help-tool-card-name">AI Tools</div><div class="help-tool-card-desc">AI polish, lyrics, translate, editable documents, editable tables</div></div>
       </div>
 
       <h3>Key Features</h3>
@@ -574,6 +574,25 @@ export const HELP_CONTENT_EN = {
         <li>Compare the original and polished text</li>
         <li>Copy the satisfactory result</li>
       </ol>
+    </div>`
+  },
+
+  'ai-lyrics': {
+    title: 'Lyrics Studio',
+    html: `<div class="help-doc">
+      <h2>Lyrics Studio</h2>
+      <p>Use DeepSeek V4 Flash to generate a title, MiniMax-ready style prompt, and structure-tagged lyrics. Edit, copy, and paste into the MiniMax Music site. This tool does not render audio.</p>
+      <h3>How to Use</h3>
+      <ol class="help-steps">
+        <li>Choose a type: original, story theme, character theme, or scene theme</li>
+        <li>Pick a genre and subgenre; each category uses a different lyrics system prompt</li>
+        <li>Pick a lyric language and enter a prompt; optionally upload a txt / md / docx story or article</li>
+        <li>Generate, then edit the title, style, and lyrics</li>
+        <li>Copy the title, style, lyrics, or everything into MiniMax Music</li>
+        <li>When you are happy with the text, choose Save locally. HY creates a folder named after the title under Lyrics, with README.md, style.txt, and lyrics.txt</li>
+        <li>Reopen Lyrics Studio to browse previous works and load one back into the editor</li>
+      </ol>
+      <div class="help-note"><p>Lyrics must include tags such as [Intro], [Verse], and [Chorus]. CJK characters count as 2 toward MiniMax's 3500-unit cap. Saving stores a local project folder only. Audio is never uploaded or generated.</p></div>
     </div>`
   },
 

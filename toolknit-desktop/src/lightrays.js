@@ -1,7 +1,7 @@
 import { Renderer, Program, Triangle, Mesh } from 'ogl';
 
 const DEFAULT_COLOR = '#ffffff';
-const BACKGROUND_DPR_MAX = 1.25;
+const BACKGROUND_DPR_MAX = 1;
 
 const hexToRgb = (hex) => {
   const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
